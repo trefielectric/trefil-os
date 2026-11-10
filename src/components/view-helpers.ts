@@ -1,7 +1,7 @@
 import { add, fromCents, toCents, buildAmortization, getAccountBalance, getUpcomingObligations, todayBogota, getCashReport } from '@/lib/finance';
 import type { State, Transaction, TransactionKind, Money, Actor, Debt, AmortizationRow } from '@/lib/finance';
 
-export type View = 'overview'|'transactions'|'accounts'|'debts'|'reconciliations'|'approvals'|'alerts'|'audit'|'settings';
+export type View = 'inventory'|'overview'|'transactions'|'accounts'|'debts'|'reconciliations'|'approvals'|'alerts'|'audit'|'settings';
 export type Mutation = (operation:(current:State)=>State,message:string)=>boolean;
 export interface ViewProps { state:State; actor:Actor; location:string; mutate:Mutation; notify:(message:string)=>void }
 export const DEMO_DATE='2026-11-10';
@@ -31,7 +31,7 @@ export function obligations(state:State,location='all',cutoff=DEMO_DATE):Obligat
   const schedules=new Map(state.debts.map(debt=>[debt.id,buildAmortization(debt)]));
   return getUpcomingObligations(state,cutoff).flatMap(item=>{
     const debt=state.debts.find(row=>row.id===item.debtId);
-    const row=schedules.get(item.debtId)?.find(row=>row.period===item.period);
+    const row=debt?.kind==='supplier'?{period:1,date:item.date,openingBalance:debt.principal,payment:debt.principal,interest:'0.00',principal:debt.principal,extraPayment:'0.00',balance:'0.00',monthlyRate:'0.00',projected:true as const}:schedules.get(item.debtId)?.find(row=>row.period===item.period);
     return debt&&row&&(location==='all'||debt.locationId===location)?[{debt,row,remaining:item.amount}]:[];
   });
 }
