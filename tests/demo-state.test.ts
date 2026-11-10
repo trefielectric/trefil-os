@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createDemoState, createTransaction, createAccount, getSummary, DEMO_ACTORS, approveTransaction, reverseTransaction, recordDebtPayment, commentAlert, type State } from '../src/lib/finance';
 import { createEmptyState } from '../src/lib/finance/empty';
+import { openCashSession } from '../src/lib/finance/cash';
 import { decodeDemoState, inspectDemoState, holdDemoWriterLease, initializeLocalStateStorage, DEMO_STORAGE_KEY, DEMO_WRITER_LOCK, LOCAL_STORAGE_KEY, LOCAL_WRITER_LOCK, type DemoLockManager, type LocalStateStorage } from '../src/lib/demo-state';
 
 const expense = (state:State) => state.transactions.find(row=>row.kind==='expense'&&row.status==='posted')!;
@@ -170,6 +171,7 @@ function recordedLocalState():State {
   let state=createEmptyState();const actor=state.members[0];
   state=createAccount(state,{name:'Caja local propia',kind:'cash',custodian:'Propietario local',locationId:'sede-principal',active:true},actor);
   const account=state.accounts.find(row=>row.kind==='cash')!;
+  state=openCashSession(state,{accountId:account.id,date:'2026-11-10'},actor);
   return createTransaction(state,{kind:'income',date:'2026-11-10',description:'Ingreso local registrado por el propietario',party:'Tercero local',category:'Ingreso',locationId:'sede-principal',amount:'123.45',accountId:account.id,idempotencyKey:'local-storage-preservation-0001'},actor);
 }
 
