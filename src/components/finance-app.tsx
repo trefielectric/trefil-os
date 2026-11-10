@@ -1,17 +1,22 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { LayoutDashboard, ArrowRightLeft, Wallet, Landmark, CheckCheck, ShieldCheck, Bell, Activity, Settings, Search, ChevronDown, ChevronRight, Plus, Download, ArrowUpRight, ArrowDownLeft, ArrowRight, Building2, Menu, X, LogOut, HardDrive, CircleHelp, Check, LockKeyhole } from 'lucide-react';
-import { createDemoState, formatCOP, getAccountBalance, getDebtBalance, deriveAlerts, toCents, fromCents, add, recordAccess } from '@/lib/finance';
+import { LayoutDashboard, ArrowRightLeft, Wallet, Landmark, CheckCheck, ShieldCheck, Bell, Activity, Settings, Search, ChevronDown, ChevronRight, Plus, Download, ArrowUpRight, ArrowDownLeft, ArrowRight, Building2, Menu, X, HardDrive, Check, LockKeyhole } from 'lucide-react';
+import { createEmptyState, formatCOP, getAccountBalance, getDebtBalance, deriveAlerts, toCents, fromCents, add } from '@/lib/finance';
 import type { State, Actor, Transaction } from '@/lib/finance';
 import { downloadFile, transactionsCSV } from '@/lib/export';
-import { DEMO_STORAGE_KEY, decodeDemoState, inspectDemoState, holdDemoWriterLease } from '@/lib/demo-state';
+import { LOCAL_STORAGE_KEY, LOCAL_WRITER_LOCK, initializeLocalStateStorage, decodeDemoState, inspectDemoState, holdDemoWriterLease } from '@/lib/demo-state';
 import { Badge, Empty, MutationFeedbackContext } from './ui';
+import { Brand, MobileBrand } from './brand';
 import { TransactionForm, TransactionDetail, TransactionsView } from './transaction-view';
 import { AccountsView, ReconciliationsView, ApprovalsView, AlertsView, AuditView, SettingsView } from './operations-view';
 import { DebtView } from './debt-view';
-import { type View, type Mutation, type ViewProps, visibleAccounts, periodTotals, cashSeries, obligations, kindLabels, roleLabels, dateLabel, canWrite, DEMO_DATE } from './view-helpers';
+import { type View, type Mutation, type ViewProps, visibleAccounts, periodTotals, cashSeries, obligations, kindLabels, roleLabels, dateLabel, canWrite, WORKSPACE_DATE as DEMO_DATE } from './view-helpers';
 
-const STORAGE_KEY=DEMO_STORAGE_KEY;
+const STORAGE_KEY=LOCAL_STORAGE_KEY;
+const reportPeriods=Array.from({length:3},(_,offset)=>{
+  const date=new Date(Date.UTC(Number(DEMO_DATE.slice(0,4)),Number(DEMO_DATE.slice(5,7))-1-offset,1));
+  return {value:date.toISOString().slice(0,7),label:new Intl.DateTimeFormat('es-CO',{month:'long',year:'numeric',timeZone:'UTC'}).format(date)};
+});
 const navItems = [
   {id:'overview',label:'Resumen general',icon:LayoutDashboard},
   {id:'transactions',label:'Movimientos',icon:ArrowRightLeft},
@@ -41,7 +46,7 @@ export function FinanceApp() {
   const [actorId,setActorId]=useState('');
   const [view,setView]=useState<View>('overview');
   const [location,setLocation]=useState('all');
-  const [period,setPeriod]=useState('2026-11');
+  const [period,setPeriod]=useState(DEMO_DATE.slice(0,7));
   const [search,setSearch]=useState('');
   const [toast,setToast]=useState('');
   const [error,setError]=useState('');
@@ -49,7 +54,6 @@ export function FinanceApp() {
   const clearActionError=useCallback(()=>setActionError(''),[]);
   const [profileOpen,setProfileOpen]=useState(false);
   const [sidebarOpen,setSidebarOpen]=useState(false);
-  const [signedOut,setSignedOut]=useState(false);
   const [newMovement,setNewMovement]=useState(false);
   const [detail,setDetail]=useState<Transaction|null>(null);
   const searchRef=useRef<HTMLInputElement>(null);
@@ -57,7 +61,7 @@ export function FinanceApp() {
   const canPersist=useRef(false);
   const hasWriterLock=useRef(false);
   const lastSnapshot=useRef<string|null>(null);
-  const readOnlyReason=useRef('Esperando el control de escritura de esta demostración.');
+  const readOnlyReason=useRef('Esperando el control de escritura del espacio local.');
   const notify=useCallback((message:string)=>{setToast(message);if(timer.current)clearTimeout(timer.current);timer.current=setTimeout(()=>setToast(''),5500);},[]);
   useEffect(()=>{
     let disposed=false;
@@ -66,16 +70,21 @@ export function FinanceApp() {
       if(resetActor)setActorId(snapshot.members.find(member=>member.role==='owner'&&member.active)?.id??snapshot.members.find(member=>member.active)?.id??'');
     };
     const stopWriting=(message:string)=>{hasWriterLock.current=false;canPersist.current=false;readOnlyReason.current=message;setError(message);};
-    const readSnapshot=():State=>{
-      let snapshot=createDemoState();canPersist.current=true;
+    const readSnapshot=(initialize=false):State=>{
+      let snapshot=createEmptyState();canPersist.current=true;
       try{
+        if(initialize){
+          snapshot=initializeLocalStateStorage(localStorage);
+          lastSnapshot.current=localStorage.getItem(STORAGE_KEY);
+          return snapshot;
+        }
         const raw=localStorage.getItem(STORAGE_KEY);lastSnapshot.current=raw;
         if(raw!==null){
           const checked=decodeDemoState(raw);
-          if(checked.ok)snapshot=checked.state;
-          else stopWriting(checked.error+' La copia original se conservó. Se muestra un escenario limpio de solo lectura; solicita la recuperación de la copia antes de registrar operaciones.');
+          if(checked.ok&&checked.state.organization.id==='local-trefil-electric')snapshot=checked.state;
+          else stopWriting((checked.ok?'La copia no pertenece al espacio local.':checked.error)+' La copia original se conservó. Se muestra una vista vacía de solo lectura; revisa la copia antes de registrar operaciones.');
         }
-      }catch{stopWriting('No se puede leer el almacenamiento del navegador. Esta vista es de solo lectura; habilita el almacenamiento en un navegador compatible y recarga.');}
+      }catch{stopWriting('No se pudo leer, validar o guardar el espacio local. Esta vista es de solo lectura y conserva la copia anterior. Revisa el almacenamiento antes de registrar operaciones.');}
       return snapshot;
     };
     show(readSnapshot(),true);
@@ -85,35 +94,28 @@ export function FinanceApp() {
       onWriter:()=>{
         if(disposed)return;
         // Re-read only after acquiring the lock, never from a stale boot snapshot.
-        const fresh=readSnapshot();
+        const fresh=readSnapshot(true);
         if(!canPersist.current){show(fresh,true);return;}
-        try{
-          const member=fresh.members.find(member=>member.role==='owner'&&member.active)??fresh.members.find(member=>member.active);
-          const entered=member?recordAccess(fresh,member,'Inicio de sesión'):fresh;
-          const checked=inspectDemoState(entered);
-          if(!checked.ok)throw new Error('No se pudo validar la sesión de demostración.');
-          const serialized=JSON.stringify(entered);
-          localStorage.setItem(STORAGE_KEY,serialized);lastSnapshot.current=serialized;
-          hasWriterLock.current=true;readOnlyReason.current='';setError('');show(entered,true);
-        }catch{stopWriting('No fue posible guardar una sesión verificada. No se registraron operaciones nuevas. Exporta la vista disponible y revisa el almacenamiento antes de recargar.');show(fresh,true);}
+        // Opening a local page is not an authenticated sign-in or a financial event.
+        hasWriterLock.current=true;readOnlyReason.current='';setError('');show(fresh,true);
       },
       onReadOnly:reason=>{
         if(disposed)return;
         hasWriterLock.current=false;
-        const message=reason==='busy'?'Otra pestaña controla la escritura. Esta pestaña es de solo lectura y recibe sus cambios. Cierra la pestaña que registra operaciones y recarga esta para tomar el control.':reason==='unsupported'?'Este navegador no ofrece el bloqueo de pestañas requerido. La demostración es de solo lectura; abre la aplicación en un navegador compatible mediante HTTPS o localhost.':'No se pudo obtener el control de escritura. Esta vista es de solo lectura; cierra otras pestañas y recarga en un navegador compatible.';
+        const message=reason==='busy'?'Otra pestaña controla la escritura. Esta pestaña es de solo lectura y recibe sus cambios. Cierra la pestaña que registra operaciones y recarga esta para tomar el control.':reason==='unsupported'?'Este navegador no ofrece el bloqueo de pestañas requerido. El espacio local es de solo lectura; abre la aplicación en un navegador compatible mediante HTTPS o localhost.':'No se pudo obtener el control de escritura. Esta vista es de solo lectura; cierra otras pestañas y recarga en un navegador compatible.';
         const detail=!canPersist.current&&readOnlyReason.current?readOnlyReason.current+' '+message:message;
         readOnlyReason.current=detail;setError(detail);
       },
-    });
+    },LOCAL_WRITER_LOCK);
     const onKey=(event:KeyboardEvent)=>{if((event.metaKey||event.ctrlKey)&&event.key==='k'){event.preventDefault();searchRef.current?.focus();}};
     const onStorage=(event:StorageEvent)=>{
       try{if(event.storageArea!==localStorage)return;}catch{stopWriting('El almacenamiento dejó de estar disponible. Esta vista permanece en solo lectura; revisa la configuración del navegador y recarga.');return;}
       if(event.key!==STORAGE_KEY&&event.key!==null)return;
       if(hasWriterLock.current)stopWriting('La copia cambió fuera de la pestaña autorizada. Se detuvieron las escrituras para evitar sobrescribir operaciones. Conserva la copia y recarga después de cerrar otras versiones de la aplicación.');
-      if(event.newValue===null){setError('El almacenamiento de la demostración cambió o fue eliminado fuera de esta pestaña. Se conserva la vista anterior en solo lectura; revisa la copia antes de recargar.');canPersist.current=false;return;}
+      if(event.newValue===null){setError('El almacenamiento local cambió o fue eliminado fuera de esta pestaña. Se conserva la vista anterior en solo lectura; revisa la copia antes de recargar.');canPersist.current=false;return;}
       const checked=decodeDemoState(event.newValue);
-      if(checked.ok){lastSnapshot.current=event.newValue;show(checked.state);notify('Datos de prueba actualizados desde la pestaña que controla la escritura.');}
-      else{canPersist.current=false;setError(checked.error+' Se conservó la última vista válida y no se sobrescribió la copia. Solicita su recuperación antes de registrar operaciones.');}
+      if(checked.ok&&checked.state.organization.id==='local-trefil-electric'){lastSnapshot.current=event.newValue;show(checked.state);notify('Datos locales actualizados desde la pestaña que controla la escritura.');}
+      else{canPersist.current=false;setError((checked.ok?'La copia no pertenece al espacio local.':checked.error)+' Se conservó la última vista válida y no se sobrescribió la copia. Revisa la copia antes de registrar operaciones.');}
     };
     window.addEventListener('keydown',onKey);window.addEventListener('storage',onStorage);
     return()=>{disposed=true;hasWriterLock.current=false;lease.release();window.removeEventListener('keydown',onKey);window.removeEventListener('storage',onStorage);if(timer.current)clearTimeout(timer.current);};
@@ -121,8 +123,8 @@ export function FinanceApp() {
   const mutate:Mutation=(operation,message)=>{
     setActionError('');
     const fail=(message:string)=>{setActionError(message);notify(message);return false;};
-    if(!current.current)return fail('La demostración todavía no está lista.');
-    if(!hasWriterLock.current||!canPersist.current)return fail(readOnlyReason.current||'La demostración está en solo lectura. Cierra otras pestañas y recarga para volver a registrar.');
+    if(!current.current)return fail('El espacio local todavía no está listo.');
+    if(!hasWriterLock.current||!canPersist.current)return fail(readOnlyReason.current||'El espacio local está en solo lectura. Cierra otras pestañas y recarga para volver a registrar.');
     try{
       if(localStorage.getItem(STORAGE_KEY)!==lastSnapshot.current){
         hasWriterLock.current=false;canPersist.current=false;
@@ -148,10 +150,8 @@ export function FinanceApp() {
   const counts:Partial<Record<View,number>>={approvals:pending.length,alerts:openAlerts.length};
   const go=(id:View)=>{setView(id);setSearch('');setSidebarOpen(false);};
   const props:ViewProps={state,actor,location,mutate,notify};
-  const beginSession=()=>{if(mutate(current=>recordAccess(current,actor,'Inicio de sesión'),'Sesión de demostración iniciada.'))setSignedOut(false);};
-  const endSession=()=>{if(mutate(current=>recordAccess(current,actor,'Cierre de sesión'),'Sesión de demostración cerrada.')){setSignedOut(true);setProfileOpen(false);}};
-  const exportReport=()=>{const filtered=state.transactions.filter(t=>(location==='all'||t.locationId===location)&&t.date.startsWith(period));downloadFile('trefil-movimientos-'+period+'.csv',transactionsCSV(state,filtered));notify('Reporte de prueba exportado con el detalle de cada asiento.');};
-  if(signedOut)return <div className="login-page"><div className="login-art"><Brand/><div><span className="eyebrow">TREFIL ELECTRIC</span><h1>Una empresa.<br/>Un centro de control.</h1><p>Claridad para decidir.<br/>Trazabilidad para avanzar.</p></div><small>Sistema operativo empresarial · Colombia</small></div><section className="login-card"><Badge tone="orange">Entorno de demostración</Badge><h2>Bienvenido de nuevo.</h2><p>Explora la fase financiera con información ficticia y operaciones de prueba.</p><label className="field"><span>Perfil de prueba</span><select value={actorId} onChange={e=>setActorId(e.target.value)}>{state.members.filter(m=>m.active).map(m=><option key={m.id} value={m.id}>{m.name+' · '+roleLabels[m.role]}</option>)}</select></label><button className="button button-primary" onClick={beginSession}>Entrar a la demostración <ArrowRight size={17}/></button><div className="inline-note"><LockKeyhole size={18}/><p>El acceso institucional se habilitará al conectar y verificar Supabase. Esta demostración no solicita credenciales.</p></div><small>No introduzcas datos reales en este entorno.</small></section></div>;
+  const hasAccounts=visibleAccounts(state,location).some(account=>account.active);
+  const exportReport=()=>{const filtered=state.transactions.filter(t=>(location==='all'||t.locationId===location)&&t.date.startsWith(period));downloadFile('trefil-movimientos-'+period+'.csv',transactionsCSV(state,filtered));notify('Reporte local exportado con el detalle de cada asiento.');};
   return <MutationFeedbackContext.Provider value={{message:actionError,clear:clearActionError}}><div className="app-shell">
     {sidebarOpen&&<button className="mobile-overlay" aria-label="Cerrar menú" onClick={()=>setSidebarOpen(false)}/>}
     <aside className={'sidebar '+(sidebarOpen?'sidebar-open':'')}>
@@ -159,16 +159,17 @@ export function FinanceApp() {
       <div className="nav-label">ESPACIO DE TRABAJO</div>
       <nav aria-label="Navegación principal">{navItems.slice(0,6).map(({id,label,icon:Icon})=><button key={id} onClick={()=>go(id)} className={'nav-item '+(view===id?'active':'')} aria-current={view===id?'page':undefined}><Icon size={18}/><span>{label}</span>{Boolean(counts[id])&&<b>{counts[id]}</b>}</button>)}</nav>
       <div className="nav-label control-label">CONTROL Y GESTIÓN</div><nav aria-label="Control y gestión">{navItems.slice(6).map(({id,label,icon:Icon})=><button key={id} onClick={()=>go(id)} className={'nav-item '+(view===id?'active':'')} aria-current={view===id?'page':undefined}><Icon size={18}/><span>{label}</span>{Boolean(counts[id])&&<b className={id==='alerts'?'alert-count':''}>{counts[id]}</b>}</button>)}</nav>
-      <div className="sidebar-bottom"><div className="phase-card"><span className="phase-icon">↗</span><strong>Hecho para tu operación.</strong><p>Una base financiera.<br/>Todo un ecosistema por delante.</p><button onClick={()=>go('settings')}>Ver hoja de ruta <ArrowUpRight size={14}/></button></div><button className="backup-sidebar" onClick={()=>go('settings')}><HardDrive size={16}/><span>Respaldo sin verificar</span><i/></button><div className="sidebar-divider"/><button className="profile-button" onClick={()=>setProfileOpen(!profileOpen)} aria-expanded={profileOpen}><span className="avatar">TE</span><span><strong>{roleLabels[actor.role]}</strong><small>Perfil de demostración</small></span><ChevronDown size={14}/></button></div>
-      {profileOpen&&<div className="profile-menu"><div className="eyebrow">CAMBIAR PERFIL DE PRUEBA</div>{state.members.filter(m=>m.active).map(m=><button key={m.id} onClick={()=>{if(m.id===actor.id){setProfileOpen(false);return;}if(mutate(current=>recordAccess(recordAccess(current,actor,'Cierre de sesión'),m,'Inicio de sesión'),'Perfil activo: '+roleLabels[m.role])){setActorId(m.id);setProfileOpen(false);}}}><span>{roleLabels[m.role]}</span>{actor.id===m.id&&<Check size={15}/>}</button>)}<button className="sign-out" onClick={endSession}><LogOut size={15}/> Salir de la demostración</button></div>}
+      <div className="sidebar-bottom"><div className="phase-card"><span className="phase-icon">↗</span><strong>Hecho para tu operación.</strong><p>Una base financiera.<br/>Todo un ecosistema por delante.</p><button onClick={()=>go('settings')}>Ver hoja de ruta <ArrowUpRight size={14}/></button></div><button className="backup-sidebar" onClick={()=>go('settings')}><HardDrive size={16}/><span>Respaldo sin verificar</span><i/></button><div className="sidebar-divider"/><button className="profile-button" onClick={()=>setProfileOpen(!profileOpen)} aria-expanded={profileOpen}><span className="avatar">TE</span><span><strong>{roleLabels[actor.role]}</strong><small>Perfil local · Sin autenticar</small></span><ChevronDown size={14}/></button></div>
+      {profileOpen&&<div className="profile-menu"><div className="eyebrow">ESPACIO LOCAL</div><p className="local-profile-note">Este perfil identifica cambios en el navegador. El acceso institucional con usuarios personales sigue pendiente.</p><button onClick={()=>{go('settings');setProfileOpen(false);}}><span>Ver configuración</span><Settings size={15}/></button><a className="text-button" href="/acceso/"><LockKeyhole size={15}/> Acceso institucional</a></div>}
+
     </aside>
     <div className="main-shell">
-      <header className="topbar"><div className="breadcrumbs"><button className="icon-button mobile-menu" aria-label="Abrir menú" onClick={()=>setSidebarOpen(true)}><Menu size={21}/></button><span>Espacio de trabajo</span><ChevronRight size={13}/><strong>{navItems.find(i=>i.id===view)?.label}</strong></div><div className="topbar-actions"><div className="global-search"><Search size={16}/><input ref={searchRef} placeholder="Buscar movimientos…" aria-label="Buscar movimientos" value={search} onChange={e=>{setSearch(e.target.value);setView('transactions');}}/><kbd>⌘ K</kbd></div><span className="topbar-separator"/><button className="notification-button icon-button" aria-label={'Ver '+openAlerts.length+' alertas'} onClick={()=>go('alerts')}><Bell size={20}/>{openAlerts.length>0&&<i/>}</button><span className="avatar avatar-small">TE</span></div></header>
+      <header className="topbar"><div className="breadcrumbs"><button className="icon-button mobile-menu" aria-label="Abrir menú" onClick={()=>setSidebarOpen(true)}><Menu size={21}/></button><MobileBrand/><span className="workspace-breadcrumb">Espacio de trabajo</span><ChevronRight size={13}/><strong>{navItems.find(i=>i.id===view)?.label}</strong></div><div className="topbar-actions"><div className="global-search"><Search size={16}/><input ref={searchRef} placeholder="Buscar movimientos…" aria-label="Buscar movimientos" value={search} onChange={e=>{setSearch(e.target.value);setView('transactions');}}/><kbd>⌘ K</kbd></div><span className="topbar-separator"/><button className="notification-button icon-button" aria-label={'Ver '+openAlerts.length+' alertas'} onClick={()=>go('alerts')}><Bell size={20}/>{openAlerts.length>0&&<i/>}</button><span className="avatar avatar-small">TE</span></div></header>
       <main id="main-content">
-        <div className="demo-bar"><span><i/> DEMOSTRACIÓN <b>Datos ficticios · Guardado en este navegador</b></span><button onClick={()=>go('settings')}>Estado de implementación <ArrowRight size={13}/></button></div>
+        <div className="demo-bar"><span><i/> ESPACIO LOCAL <b>Guardado en este navegador · Conexión institucional pendiente</b></span><button onClick={()=>go('settings')}>Estado de implementación <ArrowRight size={13}/></button></div>
         {error&&<div className="error-banner" role="alert">{error}<button aria-label="Cerrar aviso de almacenamiento" onClick={()=>setError('')}><X size={16}/></button></div>}
-        <section className="page-heading"><div><div className="eyebrow">FINANZAS <span>/</span> {view==='overview'?'VISTA GENERAL':navItems.find(i=>i.id===view)?.label.toUpperCase()}</div><h1>{titles[view].title.replace(/\.$/,'')}<span className="heading-dot">.</span></h1><p>{titles[view].subtitle}</p></div><div className="heading-buttons"><button className="button button-secondary" onClick={exportReport}><Download size={16}/><span>Exportar reporte</span></button>{canWrite(actor)&&<button className="button button-primary" onClick={()=>setNewMovement(true)}><Plus size={18}/>Nuevo movimiento</button>}</div></section>
-        <div className="context-bar"><div className="context-date"><CalendarIcon/><span>Escenario al <strong>10 de noviembre de 2026</strong></span><span className="context-dot">·</span><span>COP <span className="muted">/</span> Bogotá</span></div><div className="context-filters"><label><Building2 size={14}/><select aria-label="Filtrar por sede" value={location} onChange={e=>setLocation(e.target.value)}><option value="all">Todas las sedes</option>{state.locations.map(l=><option key={l.id} value={l.id}>{l.name}</option>)}</select></label>{['overview','transactions'].includes(view)&&<label><select aria-label="Período del reporte" value={period} onChange={e=>setPeriod(e.target.value)}><option value="2026-11">Noviembre 2026</option><option value="2026-10">Octubre 2026</option><option value="2026-09">Septiembre 2026</option></select></label>}</div></div>
+        <section className="page-heading"><div><div className="eyebrow">FINANZAS <span>/</span> {view==='overview'?'VISTA GENERAL':navItems.find(i=>i.id===view)?.label.toUpperCase()}</div><h1>{titles[view].title.replace(/\.$/,'')}<span className="heading-dot">.</span></h1><p>{titles[view].subtitle}</p></div><div className="heading-buttons"><button className="button button-secondary" onClick={exportReport}><Download size={16}/><span>Exportar reporte</span></button>{canWrite(actor)&&(hasAccounts||view!=='accounts')&&<button className="button button-primary" onClick={()=>hasAccounts?setNewMovement(true):go('accounts')}><Plus size={18}/>{hasAccounts?'Nuevo movimiento':'Crear primera cuenta'}</button>}</div></section>
+        <div className="context-bar"><div className="context-date"><CalendarIcon/><span>Al <strong>{new Intl.DateTimeFormat('es-CO',{dateStyle:'long',timeZone:'America/Bogota'}).format(new Date(DEMO_DATE+'T12:00:00Z'))}</strong></span><span className="context-dot">·</span><span>COP <span className="muted">/</span> Bogotá</span></div><div className="context-filters"><label><Building2 size={14}/><select aria-label="Filtrar por sede" value={location} onChange={e=>setLocation(e.target.value)}><option value="all">Todas las sedes</option>{state.locations.map(l=><option key={l.id} value={l.id}>{l.name}</option>)}</select></label>{['overview','transactions'].includes(view)&&<label><select aria-label="Período del reporte" value={period} onChange={e=>setPeriod(e.target.value)}>{reportPeriods.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select></label>}</div></div>
         {view==='overview'&&<Overview {...props} period={period} go={go} onDetail={setDetail}/>}
         {view==='transactions'&&<TransactionsView {...props} period={period} search={search} onSearch={setSearch} onDetail={setDetail} onCreate={()=>setNewMovement(true)}/>}
         {view==='accounts'&&<AccountsView {...props}/>}
@@ -186,18 +187,17 @@ export function FinanceApp() {
     {toast&&<div className="toast" role="status"><span className="toast-icon"><Check size={17}/></span><p>{toast}</p><button className="icon-button" aria-label="Cerrar notificación" onClick={()=>setToast('')}><X size={15}/></button></div>}
   </div></MutationFeedbackContext.Provider>;
 }
-function Brand(){return <div className="brand"><svg width="34" height="36" viewBox="0 0 40 40" aria-hidden="true"><path d="M3 6h34v8H24v23h-9V14H3z" fill="currentColor"/><path d="M3 18h8v19H3z" fill="#ed704b"/></svg><span>trefil<span className="brand-os">OS</span><small>EL CENTRO DE TU OPERACIÓN</small></span></div>;}
 function CalendarIcon(){return <svg width="15" height="15" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="3" y="4" width="14" height="13" rx="2" stroke="currentColor" strokeWidth="1.4"/><path d="M6 2v4M14 2v4M3 8h14" stroke="currentColor" strokeWidth="1.4"/></svg>;}
 
 function Overview(props:ViewProps&{period:string;go:(v:View)=>void;onDetail:(t:Transaction)=>void}){
   const {state,location,period,go,onDetail}=props;
-  const totals=periodTotals(state,location,period);
+  const totals=periodTotals(state,location,period,DEMO_DATE);
   const debts=state.debts.filter(d=>location==='all'||d.locationId===location);
   const debtTotal=add(...debts.map(d=>getDebtBalance(state,d.id)));
   const accounts=visibleAccounts(state,location);
   const alerts=deriveAlerts(state,DEMO_DATE).filter(a=>a.status!=='resolved');
   const latest=state.transactions.filter(t=>t.kind!=='opening'&&(location==='all'||t.locationId===location)&&t.date.startsWith(period)).sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt.localeCompare(a.createdAt)).slice(0,5);
-  const upcoming=obligations(state,location).filter(o=>o.row.date>=DEMO_DATE).slice(0,3);
+  const upcoming=obligations(state,location,DEMO_DATE).filter(o=>o.row.date>=DEMO_DATE).slice(0,3);
   return <>
     <section className="stat-grid" aria-label="Indicadores financieros">
       <div className="stat-card stat-featured"><div className="stat-top"><span>Dinero disponible</span><Wallet size={17}/></div><div className="metric-value">{formatCOP(totals.available)}</div><div className="stat-bottom"><span><i/>{accounts.filter(account=>account.active).length} cuentas activas</span><span className="metric-unit">COP</span></div><div className="featured-pattern" aria-hidden="true"/></div>
@@ -205,16 +205,16 @@ function Overview(props:ViewProps&{period:string;go:(v:View)=>void;onDetail:(t:T
       <div className="stat-card"><div className="stat-top"><span>Gastos del período</span><span className="metric-icon coral"><ArrowUpRight size={17}/></span></div><div className="metric-value">{formatCOP(totals.expenses)}</div><div className="stat-bottom"><span className="muted">Egresos operativos</span><span className="metric-unit">COP</span></div></div>
       <div className="stat-card"><div className="stat-top"><span>Capital por pagar</span><span className="metric-icon neutral"><Landmark size={17}/></span></div><div className="metric-value">{formatCOP(debtTotal)}</div><div className="stat-bottom"><span className="muted">{debts.filter(debt=>toCents(getDebtBalance(state,debt.id))>0n).length} obligaciones activas</span><button className="text-button" aria-label="Ver deudas" onClick={()=>go('debts')}><ArrowUpRight size={16}/></button></div></div>
     </section>
-    <div className="overview-middle"><CashChart {...props}/><section className="panel accounts-panel"><div className="panel-header"><div><h2>Caja y cuentas <span className="count-tag">{accounts.length}</span></h2><p>Disponibilidad por cuenta</p></div><button className="icon-button" aria-label="Ver todas las cuentas" onClick={()=>go('accounts')}><ArrowUpRight size={18}/></button></div><div className="account-list">{accounts.map((a,index)=><button className="account-list-row" key={a.id} onClick={()=>go('accounts')}><span className={'bank-mark bank-'+index}>{a.kind==='cash'?<Wallet size={19}/>:a.kind==='personal'?<Building2 size={18}/>:a.kind==='wallet'?'N':'B'}</span><span className="account-name"><strong>{a.name}</strong><small>{a.kind==='personal'?'Uso empresarial temporal':a.lastFour?'•••• '+a.lastFour:'Efectivo · Sede principal'}</small></span><span className="account-value">{formatCOP(getAccountBalance(state,a.id))}</span></button>)}</div><div className="panel-total"><span>Saldo consolidado</span><strong>{formatCOP(totals.available)}</strong></div></section></div>
+    <div className="overview-middle"><CashChart {...props}/><section className="panel accounts-panel"><div className="panel-header"><div><h2>Caja y cuentas <span className="count-tag">{accounts.length}</span></h2><p>Disponibilidad por cuenta</p></div><button className="icon-button" aria-label="Ver todas las cuentas" onClick={()=>go('accounts')}><ArrowUpRight size={18}/></button></div><div className="account-list">{!accounts.length&&<Empty title="Sin cuentas registradas" description="Crea tus cajas y cuentas. Empezarán con saldo cero." action={<button className="button button-secondary" onClick={()=>go('accounts')}>Configurar cuentas <ArrowRight size={14}/></button>}/>} {accounts.map((a,index)=><button className="account-list-row" key={a.id} onClick={()=>go('accounts')}><span className={'bank-mark bank-'+index}>{a.kind==='cash'?<Wallet size={19}/>:a.kind==='personal'?<Building2 size={18}/>:a.kind==='wallet'?'N':'B'}</span><span className="account-name"><strong>{a.name}</strong><small>{a.kind==='personal'?'Uso empresarial temporal':a.lastFour?'•••• '+a.lastFour:'Efectivo · Sede principal'}</small></span><span className="account-value">{formatCOP(getAccountBalance(state,a.id))}</span></button>)}</div><div className="panel-total"><span>Saldo consolidado</span><strong>{formatCOP(totals.available)}</strong></div></section></div>
     <div className="overview-lower"><section className="panel recent-panel"><div className="panel-header"><div><h2>Últimos movimientos</h2><p>El pulso de tu tesorería</p></div><button className="text-button" onClick={()=>go('transactions')}>Ver todos <ArrowRight size={15}/></button></div>{latest.length?<div className="table-scroll"><table className="data-table compact-table"><thead><tr><th>Movimiento</th><th>Fecha</th><th>Estado</th><th className="align-right">Valor</th></tr></thead><tbody>{latest.map(t=><tr key={t.id}><td><button className="transaction-title" onClick={()=>onDetail(t)}><MovementIcon kind={t.kind}/><span><strong>{t.description}</strong><small>{t.party+' · '+kindLabels[t.kind]}</small></span></button></td><td className="muted nowrap">{dateLabel(t.date,true)}</td><td><Badge tone={t.status==='posted'?'green':t.status==='pending'?'orange':'red'}>{t.reversedBy?'Reversado':t.status==='posted'?'Registrado':t.status==='pending'?'Por aprobar':'Rechazado'}</Badge></td><td className={'align-right amount '+(t.kind==='income'?'green-text':'')}>{t.kind==='income'?'+ ':''}{formatCOP(t.amount)}</td></tr>)}</tbody></table></div>:<Empty title="Un período sin movimientos" description="Los registros de este período aparecerán aquí."/>}</section>
-    <section className="panel obligations-panel"><div className="panel-header"><div><h2>Próximas obligaciones</h2><p>Pagos proyectados, aún no realizados</p></div><span className="small-icon"><Landmark size={17}/></span></div><div className="obligation-list">{upcoming.map(o=><button key={o.debt.id+'-'+o.row.period} onClick={()=>go('debts')} className="obligation-row"><span className="date-tile"><b>{o.row.date.slice(8)}</b><small>{dateLabel(o.row.date,true).replace(/^\d+\s*/,'').replace('.','').toUpperCase()}</small></span><span><strong>{o.debt.creditor}</strong><small>Cuota {o.row.period} de {o.debt.installments}</small></span><b>{formatCOP(o.remaining)}</b></button>)}</div><button className="panel-footer-link" onClick={()=>go('debts')}>Ver plan de obligaciones <ArrowRight size={15}/></button></section></div>
-    <section className="attention-strip"><span className="attention-icon"><Bell size={19}/></span><div><strong>Tu operación necesita atención.</strong><p>{alerts.length} alertas abiertas · Revisa soportes, conciliaciones y continuidad.</p></div><button className="button button-secondary" onClick={()=>go('alerts')}>Revisar alertas <ArrowRight size={15}/></button></section>
+    <section className="panel obligations-panel"><div className="panel-header"><div><h2>Próximas obligaciones</h2><p>Pagos proyectados, aún no realizados</p></div><span className="small-icon"><Landmark size={17}/></span></div><div className="obligation-list">{!upcoming.length&&<Empty title="Sin obligaciones registradas" description="Las deudas e inversiones que registres aparecerán aquí."/>}{upcoming.map(o=><button key={o.debt.id+'-'+o.row.period} onClick={()=>go('debts')} className="obligation-row"><span className="date-tile"><b>{o.row.date.slice(8)}</b><small>{dateLabel(o.row.date,true).replace(/^\d+\s*/,'').replace('.','').toUpperCase()}</small></span><span><strong>{o.debt.creditor}</strong><small>Cuota {o.row.period} de {o.debt.installments}</small></span><b>{formatCOP(o.remaining)}</b></button>)}</div><button className="panel-footer-link" onClick={()=>go('debts')}>Ver plan de obligaciones <ArrowRight size={15}/></button></section></div>
+    <section className="attention-strip"><span className="attention-icon"><Bell size={19}/></span><div><strong>{state.transactions.length?'Tu operación necesita atención.':'Configuración pendiente.'}</strong><p>{alerts.length} avisos abiertos · Revisa respaldos, recuperación y los controles pendientes.</p></div><button className="button button-secondary" onClick={()=>go('alerts')}>Revisar alertas <ArrowRight size={15}/></button></section>
   </>;
 }
 export function MovementIcon({kind}:{kind:Transaction['kind']}){return <span className={'movement-icon '+(kind==='income'?'movement-income':kind==='transfer'?'movement-transfer':'movement-expense')}>{kind==='income'?<ArrowDownLeft size={17}/>:kind==='transfer'?<ArrowRightLeft size={16}/>:<ArrowUpRight size={17}/>}</span>;}
 function CashChart({state,location,period}:ViewProps&{period:string}){
   const [mode,setMode]=useState<'balance'|'net'>('balance');
-  const series=cashSeries(state,location,period);
+  const series=cashSeries(state,location,period,DEMO_DATE);
   const lastDay=series.lastDay;
   const currentDay=series.actualThrough;
   const values=(mode==='balance'?series.balances:series.net).map(toCents);
@@ -224,5 +224,6 @@ function CashChart({state,location,period}:ViewProps&{period:string}){
   const path=(start:number,end:number)=>display.slice(start,end+1).map((v,i)=>(i?'L':'M')+x(i+start).toFixed(1)+' '+y(v).toFixed(1)).join(' ');
   const actual=path(0,currentDay);const projected=path(currentDay,lastDay);const area=actual+' L'+x(currentDay)+' 195 L56 195 Z';
   const final=fromCents(values[values.length-1]);const actualValue=fromCents(values[currentDay]);
-  return <section className="panel chart-panel"><div className="panel-header"><div><h2>Evolución de caja</h2><p>El recorrido de tu liquidez</p></div><div className="chart-tabs"><button className={mode==='balance'?'selected':''} onClick={()=>setMode('balance')}>Saldo</button><button className={mode==='net'?'selected':''} onClick={()=>setMode('net')}>Flujo neto</button></div></div><div className="chart-value"><strong>{formatCOP(actualValue)}</strong><span><i/>Registrado <span className="chart-legend-dash"/> Proyectado</span></div><div className="cash-chart"><svg viewBox="0 0 720 235" role="img" aria-label={(mode==='balance'?'Saldo':'Flujo neto')+' al corte '+formatCOP(actualValue)+'. Proyección al cierre '+formatCOP(final)+', descontando obligaciones programadas.'}><defs><linearGradient id="chart-fill" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#72a993" stopOpacity=".22"/><stop offset="100%" stopColor="#72a993" stopOpacity=".015"/></linearGradient></defs>{[0,.25,.5,.75,1].map(r=>{const value=min+span*r;return <g key={r}><line x1="56" y1={y(value)} x2="696" y2={y(value)} stroke="#e9ece8" strokeDasharray="3 5"/><text x="42" y={y(value)+4} textAnchor="end">{new Intl.NumberFormat('es-CO',{notation:'compact',maximumFractionDigits:0}).format(value)}</text></g>;})}<path d={area} fill="url(#chart-fill)"/><path d={actual} fill="none" stroke="#4b806b" strokeWidth="2.7" strokeLinejoin="round"/>{currentDay<lastDay&&<path d={projected} fill="none" stroke="#91a89e" strokeWidth="2" strokeDasharray="5 5"/>}<line x1={x(currentDay)} y1="20" x2={x(currentDay)} y2="195" stroke="#bbc9c1" strokeDasharray="3 4"/><circle cx={x(currentDay)} cy={y(display[currentDay])} r="5" fill="#4b806b" stroke="white" strokeWidth="3"/>{[1,5,10,15,20,25,lastDay].filter((d,i,a)=>a.indexOf(d)===i).map(d=><text key={d} x={x(d)} y="220" textAnchor="middle">{String(d).padStart(2,'0')+' '+(period.endsWith('11')?'nov':period.endsWith('10')?'oct':'sep')}</text>)}</svg></div><div className="chart-footnote"><span><i/>Proyección: solo cuotas futuras del mes, desde el corte.</span><span>Sin ingresos futuros estimados</span></div></section>;
+  if(!state.transactions.some(transaction=>transaction.status==='posted'&&(location==='all'||transaction.locationId===location)))return <section className="panel chart-panel"><div className="panel-header"><div><h2>Evolución de caja</h2><p>Saldo registrado: {formatCOP('0.00')}</p></div></div><Empty title="Tu historial empieza en cero" description="La gráfica se construirá a partir de tus movimientos registrados."/></section>;
+  return <section className="panel chart-panel"><div className="panel-header"><div><h2>Evolución de caja</h2><p>El recorrido de tu liquidez</p></div><div className="chart-tabs"><button className={mode==='balance'?'selected':''} onClick={()=>setMode('balance')}>Saldo</button><button className={mode==='net'?'selected':''} onClick={()=>setMode('net')}>Flujo neto</button></div></div><div className="chart-value"><strong>{formatCOP(actualValue)}</strong><span><i/>Registrado <span className="chart-legend-dash"/> Proyectado</span></div><div className="cash-chart"><svg viewBox="0 0 720 235" role="img" aria-label={(mode==='balance'?'Saldo':'Flujo neto')+' al corte '+formatCOP(actualValue)+'. Proyección al cierre '+formatCOP(final)+', descontando obligaciones programadas.'}><defs><linearGradient id="chart-fill" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="var(--brand-navy)" stopOpacity=".22"/><stop offset="100%" stopColor="var(--brand-navy)" stopOpacity=".015"/></linearGradient></defs>{[0,.25,.5,.75,1].map(r=>{const value=min+span*r;return <g key={r}><line x1="56" y1={y(value)} x2="696" y2={y(value)} stroke="#e6ebf2" strokeDasharray="3 5"/><text x="42" y={y(value)+4} textAnchor="end">{new Intl.NumberFormat('es-CO',{notation:'compact',maximumFractionDigits:0}).format(value)}</text></g>;})}<path d={area} fill="url(#chart-fill)"/><path d={actual} fill="none" stroke="var(--brand-navy)" strokeWidth="2.7" strokeLinejoin="round"/>{currentDay<lastDay&&<path d={projected} fill="none" stroke="#879bb8" strokeWidth="2" strokeDasharray="5 5"/>}<line x1={x(currentDay)} y1="20" x2={x(currentDay)} y2="195" stroke="#b7c5d8" strokeDasharray="3 4"/><circle cx={x(currentDay)} cy={y(display[currentDay])} r="5" fill="var(--brand-navy)" stroke="white" strokeWidth="3"/>{[1,5,10,15,20,25,lastDay].filter((d,i,a)=>a.indexOf(d)===i).map(d=><text key={d} x={x(d)} y="220" textAnchor="middle">{String(d).padStart(2,'0')+' '+(period.endsWith('11')?'nov':period.endsWith('10')?'oct':'sep')}</text>)}</svg></div><div className="chart-footnote"><span><i/>Proyección: solo cuotas futuras del mes, desde el corte.</span><span>Sin ingresos futuros estimados</span></div></section>;
 }
