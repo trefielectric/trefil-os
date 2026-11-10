@@ -9,11 +9,11 @@ import { downloadFile, transactionsCSV } from '@/lib/export';
 
 const categories=['Ventas','Recaudo de cartera','Materias primas','Logística y transporte','Servicios públicos','Mantenimiento','Salarios','Anticipos por legalizar','Reembolsos','Préstamos recibidos','Gastos personales','Traslado entre cuentas','Patrimonio inicial','Ajustes de tesorería','Sin clasificar'];
 const formKinds:TransactionInput['kind'][]=['income','expense','transfer','advance','reimbursement','salary','loan','personal_expense','adjustment','opening'];
-export function TransactionForm({state,actor,location,mutate,onClose}:ViewProps&{onClose:()=>void}){
-  const [kind,setKind]=useState<TransactionInput['kind']>('expense');
+export function TransactionForm({state,actor,location,mutate,onClose,initialKind='expense',initialAccountId}:ViewProps&{onClose:()=>void;initialKind?:TransactionInput['kind'];initialAccountId?:string}){
+  const [kind,setKind]=useState<TransactionInput['kind']>(initialKind);
   const [locationId,setLocationId]=useState(location==='all'?state.locations[0]?.id??'':location);
   const accounts=visibleAccounts(state,locationId).filter(a=>a.active);
-  const [accountId,setAccountId]=useState(accounts[0]?.id??'');
+  const [accountId,setAccountId]=useState(initialAccountId??accounts[0]?.id??'');
   const [destination,setDestination]=useState(accounts[1]?.id??'');
   const [amount,setAmount]=useState('');
   const [support,setSupport]=useState<Support>();
@@ -38,9 +38,9 @@ export function TransactionForm({state,actor,location,mutate,onClose}:ViewProps&
     if(mutate(s=>createTransaction(s,input,actor),needsApproval?'Solicitud creada. Requiere aprobación de otra persona.':'Movimiento registrado en este espacio local.'))onClose();
   };
   return <Modal title="Nuevo movimiento" subtitle="Registra la operación con su cuenta, clasificación y soporte." onClose={onClose}>
-    <form onSubmit={submit}><div className="movement-type-tabs">{(['income','expense','transfer'] as const).map(k=><button type="button" key={k} onClick={()=>setKind(k)} className={kind===k?'selected':''}>{k==='income'?<ArrowDownLeft size={17}/>:k==='expense'?<ArrowUpRight size={17}/>:<ArrowRightLeft size={17}/>} {kindLabels[k]}</button>)}</div>
+    <form onSubmit={submit}>{initialKind!=='opening'&&<div className="movement-type-tabs">{(['income','expense','transfer'] as const).map(k=><button type="button" key={k} onClick={()=>setKind(k)} className={kind===k?'selected':''}>{k==='income'?<ArrowDownLeft size={17}/>:k==='expense'?<ArrowUpRight size={17}/>:<ArrowRightLeft size={17}/>} {kindLabels[k]}</button>)}</div>}
     <div className="form-grid">
-      <Field label="Tipo de operación"><select value={kind} onChange={e=>setKind(e.target.value as TransactionInput['kind'])}>{formKinds.map(k=><option key={k} value={k}>{kindLabels[k]}</option>)}</select></Field>
+      <Field label="Tipo de operación"><select value={kind} onChange={e=>setKind(e.target.value as TransactionInput['kind'])}>{(initialKind==='opening'?['opening'] as const:formKinds).map(k=><option key={k} value={k}>{kindLabels[k]}</option>)}</select></Field>
       <Field label="Fecha de la operación"><input type="date" name="date" defaultValue={DEMO_DATE} max={DEMO_DATE} required/></Field>
       <Field label="Sede"><select value={locationId} onChange={e=>{const next=e.target.value;setLocationId(next);const list=visibleAccounts(state,next);setAccountId(list[0]?.id??'');setDestination(list[1]?.id??'');}}>{state.locations.filter(l=>state.members.find(m=>m.id===actor.id)?.locationIds.includes(l.id)).map(l=><option key={l.id} value={l.id}>{l.name}</option>)}</select></Field>
       <Field label={kind==='transfer'?'Cuenta de origen':'Cuenta'}><select required value={accountId} onChange={e=>setAccountId(e.target.value)}><option value="" disabled>Selecciona una cuenta</option>{accounts.map(a=><option value={a.id} key={a.id}>{a.name}</option>)}</select></Field>

@@ -1,5 +1,6 @@
 import { add, buildAmortization, fromCents, getAccountBalance, getDebtBalance, getSummary, isBalanced, money, rateFraction, toCents, validateDate, type State } from './finance';
 import { createEmptyState } from './finance/empty';
+import { validateCashState } from './finance/cash-validation';
 
 export const DEMO_STORAGE_KEY = 'trefil-os:demo:v1';
 export const DEMO_WRITER_LOCK = 'trefil-os-demo-write';
@@ -83,6 +84,11 @@ export function inspectDemoState(value: unknown): { ok: true; state: State } | {
       if (!locationIds.has(identifier(item.locationId,`${path}.locationId`))) invalid(`${path}.locationId`);
       optionalText(item.bank,`${path}.bank`,255); optionalText(item.origin,`${path}.origin`,100); optionalTime(item.createdAt,`${path}.createdAt`);
       if (item.lastFour !== undefined && !/^\d{4}$/.test(text(item.lastFour,`${path}.lastFour`,4,4))) invalid(`${path}.lastFour`);
+      if (item.accountNumber !== undefined) {
+        const number=text(item.accountNumber,`${path}.accountNumber`,6,34);
+        if(!/^\d{6,34}$/.test(number)||(item.lastFour!==undefined&&item.lastFour!==number.slice(-4)))invalid(`${path}.accountNumber`);
+      }
+      support(item.accountDocument,`${path}.accountDocument`);
       if (item.businessUseAuthorizedUntil !== undefined) date(item.businessUseAuthorizedUntil,`${path}.businessUseAuthorizedUntil`);
       if (item.kind === 'personal' && !item.businessUseAuthorizedUntil) invalid(`${path}.businessUseAuthorizedUntil`);
     });
@@ -146,7 +152,8 @@ export function inspectDemoState(value: unknown): { ok: true; state: State } | {
       const debt = state.debts.find(row => row.id === item.debtId)!; const transaction = state.transactions.find(row => row.id === item.transactionId)!;
       const paidOn = date(item.date,`${path}.date`); choice(item.status,statuses,`${path}.status`);
       const amount = decimal(item.amount,`${path}.amount`,true); const principal = decimal(item.principal,`${path}.principal`,true); const interest = decimal(item.interest,`${path}.interest`,true);
-      if (toCents(amount) <= 0n || add(principal,interest) !== amount || transaction.kind !== 'debt_payment' || transaction.status !== item.status || transaction.amount !== amount || transaction.date !== paidOn || debt.locationId !== transaction.locationId || paidOn < debt.startDate) invalid(`${path}.distribución`);
+      const fees=['insurance','commission','lateFee'].map(field=>item[field]===undefined?'0.00':decimal(item[field],`${path}.${field}`,true));
+      if (toCents(amount) <= 0n || add(principal,interest,...fees) !== amount || transaction.kind !== 'debt_payment' || transaction.status !== item.status || transaction.amount !== amount || transaction.date !== paidOn || debt.locationId !== transaction.locationId || paidOn < debt.startDate) invalid(`${path}.distribución`);
       if (item.appliedMonthlyRate !== undefined) { const rate = text(item.appliedMonthlyRate,`${path}.appliedMonthlyRate`,1,20); try { rateFraction(rate); } catch { invalid(`${path}.appliedMonthlyRate`); } }
     });
     if (state.transactions.some(transaction => transaction.kind === 'debt_payment' && !paymentTransactions.has(transaction.id))) invalid('debtPayments.pago sin distribución');
@@ -165,6 +172,7 @@ export function inspectDemoState(value: unknown): { ok: true; state: State } | {
       const item = object(value,'alert'); const path = `alerts[${index}]`;
       for (const field of ['type','title','description','responsible','evidence']) text(item[field],`${path}.${field}`);
       choice(item.severity,['critical','warning','info'],`${path}.severity`); choice(item.status,['open','in_progress','resolved'],`${path}.status`); date(item.dueDate,`${path}.dueDate`); optionalText(item.resolution,`${path}.resolution`);
+      if(item.locationId!==undefined&&!locationIds.has(identifier(item.locationId,`${path}.locationId`)))invalid(`${path}.locationId`);
       const comments = list(item.comments,`${path}.comments`,1000); uniqueIds(comments,`${path}.comments`);
       comments.forEach(value => { const comment = object(value,'comment'); text(comment.actorName,`${path}.comment.actorName`,1,255); time(comment.date,`${path}.comment.date`); text(comment.text,`${path}.comment.text`); });
       list(item.history,`${path}.history`,2000).forEach(value => { const event = object(value,'history'); text(event.actorName,`${path}.history.actorName`,1,255); time(event.date,`${path}.history.date`); text(event.action,`${path}.history.action`); });
@@ -181,6 +189,7 @@ export function inspectDemoState(value: unknown): { ok: true; state: State } | {
     // A structurally valid snapshot must also support every financial read without
     // overflowing canonical money or accepting an overpaid debt.
     try {
+      if(root.cash!==undefined)validateCashState(state);
       state.accounts.forEach(account => getAccountBalance(state,account.id));
       state.debts.forEach(debt => { if (toCents(getDebtBalance(state,debt.id)) < 0n) invalid('debtPayments.capital superior al saldo'); });
       getSummary(state,'2026-11-10');

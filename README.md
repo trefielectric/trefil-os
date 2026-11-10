@@ -39,13 +39,19 @@ La compilación produce `out/` mediante la exportación estática de Next.js App
 
 Los indicadores financieros arrancan en cero y las listas sin registros. La ausencia de un respaldo o de conexión institucional puede seguir generando avisos legítimos de configuración pendiente; no se inventan ejecuciones verificadas para ocultarlos. El almacenamiento local puede editarse o borrarse y no equivale a una base auditable ni a un respaldo empresarial. La autorización y aprobación empresarial requieren usuarios personales, sesiones y controles del backend verificados.
 
+## Módulo Caja
+
+La implementación de Caja incorpora turnos de efectivo, arqueo por denominaciones, registro y documentación de movimientos, seguimiento de legalizaciones, recepción de traslados, cierre mensual local, conciliación manual de extractos CSV e informes PDF/Excel. Las plantillas de ocho cuentas y cuatro pasarelas solo completan formularios: no crean cuentas, responsables ni dinero automáticamente. Bancos y billeteras registran operaciones directamente; los turnos corresponden exclusivamente a efectivo.
+
+Las cinco decisiones que dejaba abiertas la especificación fueron confirmadas por el usuario. Las solicitudes de corrección y cierre excepcional permanecen pendientes de autorización institucional; no se simula MFA ni se acepta un PIN local como autorización empresarial. El alcance detallado, las decisiones y sus límites se describen en [Módulo Caja](docs/caja-module.md). La integración nueva está en verificación: no hereda automáticamente la evidencia de las 95 pruebas del inicio limpio.
+
 Los importes se transportan como cadenas decimales y se calculan con centavos `BigInt`; PostgreSQL usa `numeric(18,2)`. Las tasas del simulador son porcentajes **mensuales vencidos**, con redondeo a centavos por período. El plan contractual y las proyecciones no representan pagos realizados ni una liquidación diaria del acreedor. Los anticipos y préstamos recibidos se distinguen de los ingresos y gastos operativos; el flujo de caja sí refleja sus entradas o salidas efectivas.
 
 ## Recursos institucionales identificados
 
 | Recurso | Destino autorizado |
 | --- | --- |
-| GitHub privado | [trefielectric/trefil-os](https://github.com/trefielectric/trefil-os) |
+| GitHub público | [trefielectric/trefil-os](https://github.com/trefielectric/trefil-os), visibilidad autorizada expresamente por el usuario |
 | Supabase | Organización `Trefielectric`, proyecto `trefil-os`, referencia `kifmqoolaerepvlzrqnk`, región São Paulo `sa-east-1` |
 | Vercel | Cuenta verificada en navegador `administrativo914`; proyecto objetivo `trefil-os`; acceso GitHub limitado a este repositorio |
 | Administración | `administracion@Trefielectric.onmicrosoft.com` |
@@ -60,7 +66,9 @@ La configuración prevista utiliza únicamente `NEXT_PUBLIC_SUPABASE_URL` y `NEX
 
 ## Preview y producción
 
-El proyecto Vercel `administrativo914/trefil-os` está preparado con Next.js, raíz de repositorio vacía (el `package.json` remoto está en la raíz), Node `24.x`, instalación `npm ci`, build `npm run build` y salida `out`. `engines.node` fija la misma versión mayor que CI. La autenticación de Vercel está activada para **All Deployments**, sin enlaces de bypass, para mantener privada la revisión. La conexión Git del repositorio privado de organización requiere Pro; no se ha contratado ni publicado un despliegue. Cambiar el origen de localhost a Vercel crea un almacenamiento local separado y no sincroniza registros ni los conecta a PostgreSQL.
+El proyecto Vercel `administrativo914/trefil-os` está conectado al repositorio público y dispone de [un enlace de vista previa](https://trefil-os-git-codex-finance-preview-administrativo914.vercel.app/) en Hobby, sin contratar Pro. La última base publicada y verificada antes de integrar Caja fue `f62989b`, con estado Ready y CI aprobado. La nueva versión de Caja requiere su propia validación y publicación; ese enlace no acredita que todos los cambios de la copia de trabajo ya estén desplegados.
+
+La configuración utiliza Next.js, raíz de repositorio vacía (el `package.json` remoto está en la raíz), Node `24.x`, instalación `npm ci` y build `npm run build`. Se eliminó el override `outputDirectory`: el adaptador de Vercel detecta `.next`, lee los manifiestos y procesa la exportación estática `out/`. Forzar `out` como directorio del adaptador causaba un error al buscar `routes-manifest.json`. `engines.node` fija la misma versión mayor que CI. La autenticación de Vercel está activada para **All Deployments**, sin enlaces de bypass. No se habilitó producción ni se contrataron complementos pagados. Cambiar el origen de localhost a Vercel crea un almacenamiento local separado y no sincroniza registros ni los conecta a PostgreSQL.
 
 `vercel.json` deshabilita los despliegues Git de `main` y habilita la rama `codex/finance-preview`. La condición `ignoreCommand` ejecuta `scripts/vercel-build-gate.mjs`: un entorno `preview` retorna **1**, que permite construir; `production`, un entorno desconocido o una variable ausente retornan **0**, que omite el build según la convención de Vercel. Estos códigos no son los de una prueba convencional. [Referencia de Vercel](https://vercel.com/docs/project-configuration/vercel-json#ignorecommand).
 
@@ -80,5 +88,6 @@ Las herramientas manuales están disponibles mediante `npm run backup`, `npm run
 - [Acceso institucional y MFA](docs/auth-setup.md)
 - [Respaldo, retención y recuperación](docs/recovery.md)
 - [Estado de implementación](docs/implementation-status.md)
+- [Módulo Caja: alcance, decisiones y verificación](docs/caja-module.md)
 
 No se han conectado Microsoft Graph, Outlook, OneDrive ni Google Drive. La importación de documentos históricos requiere identificar su propietario y autorización específica. El repositorio contiene código y fixtures ficticios de pruebas; los secretos, respaldos y registros reales permanecen fuera de él.

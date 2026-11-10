@@ -1,4 +1,4 @@
-import { add, fromCents, toCents, buildAmortization, getAccountBalance, getUpcomingObligations, todayBogota } from '@/lib/finance';
+import { add, fromCents, toCents, buildAmortization, getAccountBalance, getUpcomingObligations, todayBogota, getCashReport } from '@/lib/finance';
 import type { State, Transaction, TransactionKind, Money, Actor, Debt, AmortizationRow } from '@/lib/finance';
 
 export type View = 'overview'|'transactions'|'accounts'|'debts'|'reconciliations'|'approvals'|'alerts'|'audit'|'settings';
@@ -7,7 +7,7 @@ export interface ViewProps { state:State; actor:Actor; location:string; mutate:M
 export const DEMO_DATE='2026-11-10';
 export const WORKSPACE_DATE=todayBogota();
 export const kindLabels:Record<TransactionKind,string>={income:'Ingreso',expense:'Gasto',transfer:'Traslado',opening:'Saldo inicial',advance:'Anticipo',reimbursement:'Reembolso',salary:'Salario',loan:'Préstamo recibido',adjustment:'Ajuste',reversal:'Reverso',debt_payment:'Pago de deuda',personal_expense:'Gasto personal'};
-export const roleLabels:Record<Actor['role'],string>={owner:'Propietario',admin:'Administrador general',treasury:'Tesorería',accounting:'Contabilidad',inventory:'Inventarios',production:'Producción',sales:'Ventas',hr:'Recursos humanos',employee:'Empleado',auditor:'Auditor de solo lectura'};
+export const roleLabels:Record<Actor['role'],string>={owner:'Creador',admin:'Gerente',treasury:'Tesorería',accounting:'Contabilidad',inventory:'Inventarios',production:'Producción',sales:'Ventas',hr:'Recursos humanos',employee:'Empleado',auditor:'Auditor de solo lectura'};
 export const accountKindLabels={bank:'Banco',cash:'Efectivo',wallet:'Billetera digital',personal:'Personal autorizada',ledger:'Contable'};
 export const methods={fixed_payment:'Cuota fija',fixed_principal:'Capital fijo',interest_only:'Interés y capital al final'};
 export function dateLabel(value:string,short=false) {return new Intl.DateTimeFormat('es-CO',{day:'numeric',month:short?'short':'long',timeZone:'America/Bogota'}).format(new Date(`${value}T12:00:00Z`));}
@@ -17,10 +17,14 @@ export function canApprove(actor:Actor) {return ['owner','admin'].includes(actor
 export function visibleAccounts(state:State,location='all') {return state.accounts.filter(a=>a.kind!=='ledger'&&(location==='all'||a.locationId===location));}
 export function cashDelta(state:State,tx:Transaction):bigint {const ids=new Set(visibleAccounts(state).map(a=>a.id));return tx.entries.reduce((s,e)=>s+(ids.has(e.accountId)?toCents(e.debit)-toCents(e.credit):0n),0n);}
 export function periodTotals(state:State,location:string,period:string,cutoff=DEMO_DATE) {
+  if(!/^\d{4}-\d{2}$/.test(period)||Number(period.slice(5))<1||Number(period.slice(5))>12)throw new Error('Período inválido.');
+  const monthEnd=new Date(Date.UTC(Number(period.slice(0,4)),Number(period.slice(5)),0)).toISOString().slice(0,10);
+  const asOf=monthEnd<cutoff?monthEnd:cutoff;
+  if(state.cash&&period+'-01'<=asOf){const report=getCashReport(state,{startDate:period+'-01',endDate:asOf,...(location!=='all'?{locationId:location}:{})});return {income:report.externalInflows,expenses:report.operatingExpenses,net:fromCents(toCents(report.externalInflows)-toCents(report.operatingExpenses)),available:report.closingAvailable};}
   let income=0n,expense=0n;
   const txs=state.transactions.filter(t=>t.status==='posted'&&t.date.startsWith(period)&&t.date<=cutoff&&(location==='all'||t.locationId===location));
-  for(const tx of txs) {let kind=tx.kind;if(kind==='reversal')kind=state.transactions.find(t=>t.id===tx.reversalOf)?.kind??kind;const d=cashDelta(state,tx);if(kind==='income')income+=d;else if(['expense','salary','reimbursement','personal_expense'].includes(kind))expense-=d;}
-  return {income:fromCents(income),expenses:fromCents(expense),net:fromCents(income-expense),available:add(...visibleAccounts(state,location).map(a=>getAccountBalance(state,a.id)))};
+  for(const tx of txs) {let kind=tx.kind;if(kind==='reversal')kind=state.transactions.find(t=>t.id===tx.reversalOf)?.kind??kind;const d=cashDelta(state,tx);if(kind==='income')income+=d;else if(['expense','salary','reimbursement'].includes(kind))expense-=d;}
+  return {income:fromCents(income),expenses:fromCents(expense),net:fromCents(income-expense),available:add(...visibleAccounts(state,location).map(a=>getAccountBalance(state,a.id,asOf)))};
 }
 export interface Obligation {debt:Debt;row:AmortizationRow;remaining:Money}
 export function obligations(state:State,location='all',cutoff=DEMO_DATE):Obligation[] {

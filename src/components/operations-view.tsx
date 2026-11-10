@@ -4,22 +4,34 @@ import { useState, type FormEvent } from 'react';
 import { Activity, AlertTriangle, ArrowUpRight, Banknote, Building2, Check, CheckCheck, FileText, HardDrive, Landmark, LockKeyhole, MessageSquare, Plus, Search, ShieldCheck, Smartphone, Wallet, X } from 'lucide-react';
 import { add, approveTransaction, commentAlert, createAccount, deriveAlerts, formatCOP, getAccountBalance, reconcileAccount, rejectTransaction, resolveAlert, sub, toCents, type Account, type Alert, type Transaction } from '@/lib/finance';
 import { Badge, Empty, Field, Modal } from './ui';
+import { MovementEvidenceModal } from './cash-view';
+import { TransactionForm } from './transaction-view';
 import { accountKindLabels, canApprove, canWrite, dateLabel, WORKSPACE_DATE as DEMO_DATE, kindLabels, roleLabels, timestamp, visibleAccounts, type ViewProps } from './view-helpers';
 
 const normalizeMoney=(value:string)=>value.trim().replace(',', '.');
 const chosenLocation=(props:ViewProps)=>props.location==='all'?props.state.locations[0]?.id??'':props.location;
 const accountIcon=(kind:Account['kind'])=>kind==='cash'?<Banknote size={23}/>:kind==='wallet'?<Smartphone size={23}/>:kind==='personal'?<Building2 size={23}/>:<Landmark size={23}/>;
+const accountPresets: {name:string;kind:Account['kind'];bank?:string}[]=[
+  {name:'Caja Principal en Efectivo',kind:'cash'}, {name:'Cuenta Trefielectric',kind:'bank'},
+  ...['Juan','Edgar','Valentina','Andrea','Federico'].map(name=>({name:'Cuenta '+name,kind:'personal' as const})),
+  {name:'Nequi Federico',kind:'wallet',bank:'Nequi'},
+  ...['MasterShop','Heka','Skydropx','Mercado Libre'].map(name=>({name,kind:'wallet' as const,bank:name})),
+];
 
 export function AccountsView(props:ViewProps) {
   const {state,actor,location,mutate}=props;
   const [creating,setCreating]=useState(false);
+  const [openingAccount,setOpeningAccount]=useState<Account|null>(null);
   const [kind,setKind]=useState<Account['kind']>('bank');
+  const [name,setName]=useState('');
+  const [bank,setBank]=useState('');
   const accounts=visibleAccounts(state,location);
   const locations=state.locations.filter(row=>state.members.find(member=>member.id===actor.id)?.locationIds.includes(row.id));
   const canCreate=canWrite(actor)&&actor.role!=='accounting'&&locations.length>0;
   const create=(event:FormEvent<HTMLFormElement>)=>{
     event.preventDefault();const data=new FormData(event.currentTarget);
-    const saved=mutate(current=>createAccount(current,{name:String(data.get('name')),kind,bank:String(data.get('bank')||'')||undefined,lastFour:String(data.get('lastFour')||'')||undefined,custodian:String(data.get('custodian')),locationId:String(data.get('locationId')),active:true,businessUseAuthorizedUntil:kind==='personal'?String(data.get('authorizedUntil')):undefined},actor),'Cuenta creada en este espacio local. El saldo inicial requiere un movimiento aprobado.');
+    const accountNumber=String(data.get('accountNumber')||'').trim();
+    const saved=mutate(current=>createAccount(current,{name:String(data.get('name')),kind,bank:String(data.get('bank')||'')||undefined,accountNumber:accountNumber||undefined,lastFour:accountNumber?accountNumber.replace(/\D/g,'').slice(-4)||undefined:undefined,custodian:String(data.get('custodian')),locationId:String(data.get('locationId')),active:true,businessUseAuthorizedUntil:kind==='personal'?String(data.get('authorizedUntil')):undefined},actor),'Cuenta creada en cero. No se registró ningún ingreso ni saldo ficticio.');
     if(saved)setCreating(false);
   };
   return <>
@@ -29,18 +41,20 @@ export function AccountsView(props:ViewProps) {
       <h2>{account.name}</h2><p className="muted">{account.bank??accountKindLabels[account.kind]}{account.lastFour?' · •••• '+account.lastFour:''}</p><div className="metric-value">{formatCOP(getAccountBalance(state,account.id))}</div>
       <div className="detail-grid"><div className="detail-item"><small>Responsable</small><strong>{account.custodian}</strong></div><div className="detail-item"><small>Sede</small><strong>{state.locations.find(row=>row.id===account.locationId)?.name}</strong></div></div>
       {account.kind==='personal'&&<div className="inline-note warning-note"><AlertTriangle size={17}/><p>Dinero empresarial en cuenta personal. Autorización temporal hasta {account.businessUseAuthorizedUntil?dateLabel(account.businessUseAuthorizedUntil):'sin definir'}.</p></div>}
-      <div className="card-footer"><span className="muted">Saldo calculado desde asientos registrados</span></div>
+      <div className="card-footer"><span className="muted">Saldo calculado desde asientos registrados</span>{canCreate&&<button className="text-button" onClick={()=>setOpeningAccount(account)}>Solicitar saldo inicial</button>}</div>
     </section>)}</div>:<Empty title="Empieza por tu primera cuenta" description="No hay cuentas ni saldos registrados en esta sede. Crea una cuenta para empezar a organizar el libro local." action={canCreate?<button className="button button-primary" onClick={()=>setCreating(true)}><Plus size={16}/>Crear primera cuenta</button>:undefined}/>}
-    <div className="inline-note"><ShieldCheck size={18}/><p>Los saldos se calculan desde el libro de doble entrada. Para registrar un saldo inicial, usa «Nuevo movimiento → Saldo inicial»; requerirá aprobación independiente. No se permiten cambios directos de saldo.</p></div>
+    <div className="inline-note"><ShieldCheck size={18}/><p>Los saldos se calculan desde el libro de doble entrada. «Solicitar saldo inicial» crea un asiento sujeto a aprobación independiente. En efectivo debe existir un turno abierto de esa fecha. No se permiten cambios directos de saldo.</p></div>
     {creating&&<Modal title="Crear cuenta" subtitle="Cada cuenta tiene un responsable y pertenece a una sede." onClose={()=>setCreating(false)}><form onSubmit={create}><div className="form-grid">
-      <Field label="Nombre de la cuenta" full><input name="name" required minLength={2} maxLength={120} placeholder="Ej. Cuenta operativa de planta"/></Field>
+      <Field label="Plantilla de cuenta" full hint="Las plantillas solo completan el nombre y el tipo. Tú defines el responsable y los datos; todas empiezan en cero."><select defaultValue="" onChange={event=>{const preset=accountPresets.find(row=>row.name===event.target.value);if(preset){setName(preset.name);setKind(preset.kind);setBank(preset.bank??'');}}}><option value="">Cuenta personalizada</option>{accountPresets.map(row=><option key={row.name} value={row.name}>{row.name}</option>)}</select></Field>
+      <Field label="Nombre de la cuenta" full><input name="name" value={name} onChange={event=>setName(event.target.value)} required minLength={2} maxLength={120} placeholder="Ej. Caja Principal en Efectivo"/></Field>
       <Field label="Tipo"><select value={kind} onChange={event=>setKind(event.target.value as Account['kind'])}>{Object.entries(accountKindLabels).filter(([value])=>value!=='ledger').map(([value,label])=><option value={value} key={value}>{label}</option>)}</select></Field>
       <Field label="Sede"><select name="locationId" required defaultValue={locations.some(row=>row.id===chosenLocation(props))?chosenLocation(props):locations[0]?.id??''}>{locations.map(row=><option key={row.id} value={row.id}>{row.name}</option>)}</select></Field>
-      <Field label="Entidad o banco"><input name="bank" maxLength={120} placeholder={kind==='cash'?'Opcional para efectivo':'Nombre de la entidad'} required={kind==='bank'||kind==='wallet'}/></Field>
-      <Field label="Últimos cuatro dígitos" hint="No guardes números completos de cuenta."><input name="lastFour" inputMode="numeric" pattern="[0-9]{4}" maxLength={4} placeholder="0000"/></Field>
+      <Field label="Entidad, banco o pasarela"><input name="bank" value={bank} onChange={event=>setBank(event.target.value)} maxLength={120} placeholder={kind==='cash'?'Opcional para efectivo':'Nombre de la entidad'} required={kind==='bank'||kind==='wallet'}/></Field>
+      {kind!=='cash'&&<Field label="Número o referencia de cuenta" hint="Se guarda en este navegador. Las tarjetas e informes muestran solo los últimos cuatro dígitos."><input name="accountNumber" inputMode="numeric" pattern="[0-9]{6,34}" maxLength={34} minLength={6} required={kind==='bank'||kind==='personal'} placeholder="Número sin espacios ni separadores" autoComplete="off"/></Field>}
       <Field label="Responsable" full><input name="custodian" required minLength={2} maxLength={120} placeholder="Persona responsable de la cuenta"/></Field>
       {kind==='personal'&&<Field label="Autorización empresarial hasta" full hint="El uso de cuentas personales debe ser temporal y explícito."><input name="authorizedUntil" type="date" required min={DEMO_DATE}/></Field>}
     </div><div className="inline-note"><Wallet size={18}/><p>La nueva cuenta comienza en cero. Solo los movimientos aprobados modificarán su saldo.</p></div><div className="form-actions"><button type="button" className="button button-secondary" onClick={()=>setCreating(false)}>Cancelar</button><button className="button button-primary" type="submit">Crear cuenta</button></div></form></Modal>}
+    {openingAccount&&<TransactionForm {...props} location={openingAccount.locationId} initialKind="opening" initialAccountId={openingAccount.id} onClose={()=>setOpeningAccount(null)}/>}
   </>;
 }
 
@@ -85,7 +99,7 @@ export function ApprovalsView({state,actor,location,mutate,onDetail}:ViewProps&{
     if(saved)setDecision(null);
   };
   return <>
-    <div className="inline-note"><ShieldCheck size={19}/><p>Los movimientos desde $ 5.000.000, saldos iniciales, ajustes, gastos personales, pagos de deuda y reversos requieren aprobación de otra persona con rol Propietario o Administrador general. Mientras estén pendientes, no afectan saldos.</p></div>
+    <div className="inline-note"><ShieldCheck size={19}/><p>Los movimientos desde $ 5.000.000, saldos iniciales, ajustes, gastos personales, pagos de deuda y reversos requieren aprobación de otra persona con rol Creador o Gerente. Mientras estén pendientes, no afectan saldos.</p></div>
     {state.members.filter(member=>member.active&&['owner','admin'].includes(member.role)).length<2&&<div className="inline-note warning-note"><LockKeyhole size={18}/><p>Este espacio local todavía no tiene una segunda persona autorizada para aprobar. La conexión de usuarios institucionales está pendiente; no se permite autoaprobar solicitudes.</p></div>}
     <div className="filter-bar"><div className="tabs"><button className={'tab '+(status==='pending'?'selected':'')} onClick={()=>setStatus('pending')}>Por aprobar <span className="count-tag">{pending.length}</span></button><button className={'tab '+(status==='decided'?'selected':'')} onClick={()=>setStatus('decided')}>Decisiones anteriores</button></div><span className="muted">Perfil: {roleLabels[actor.role]}</span></div>
     <section className="panel">{transactions.length?<div className="table-scroll"><table className="data-table"><thead><tr><th>Solicitud</th><th>Solicitante</th><th>Valor</th><th>Estado</th><th className="align-right">Decisión</th></tr></thead><tbody>{transactions.map(transaction=><tr key={transaction.id}><td><button className="text-button" onClick={()=>onDetail(transaction)}>{transaction.description}<ArrowUpRight size={14}/></button><small className="table-subtext">{transaction.reference} · {kindLabels[transaction.kind]} · {dateLabel(transaction.date,true)}</small></td><td>{state.members.find(member=>member.id===transaction.requestedBy)?.name??'Usuario registrado'}{transaction.requestedBy===actor.id&&<small className="table-subtext">Solicitud propia</small>}</td><td className="amount nowrap">{formatCOP(transaction.amount)}</td><td><Badge tone={transaction.status==='pending'?'orange':transaction.status==='posted'?'green':'red'}>{transaction.status==='pending'?'Pendiente':transaction.status==='posted'?'Aprobado':'Rechazado'}</Badge></td><td className="align-right">{transaction.status==='pending'&&canApprove(actor)?<div className="row-actions"><button className="button button-secondary" onClick={()=>setDecision({transaction,approve:false})} aria-label={'Rechazar '+transaction.reference}><X size={14}/>Rechazar</button><button className="button button-primary" onClick={()=>setDecision({transaction,approve:true})} aria-label={'Aprobar '+transaction.reference}><Check size={14}/>Aprobar</button></div>:transaction.status==='pending'?<span className="muted">Requiere propietario o administrador</span>:<span className="muted">{transaction.status==='rejected'?transaction.rejectionReason:'Revisado por '+(state.members.find(member=>member.id===transaction.approvedBy)?.name??'Administración')}</span>}</td></tr>)}</tbody></table></div>:<Empty title={status==='pending'?'Sin solicitudes pendientes':'Todavía no hay decisiones'} description={status==='pending'?'Las operaciones que requieran una segunda aprobación aparecerán aquí.':'Las aprobaciones y rechazos conservarán aquí su historial.'}/>}</section>
@@ -96,7 +110,9 @@ export function ApprovalsView({state,actor,location,mutate,onDetail}:ViewProps&{
 const severityLabels={critical:'Crítica',warning:'Advertencia',info:'Informativa'} as const;
 const alertStatusLabels={open:'Abierta',in_progress:'En proceso',resolved:'Resuelta'} as const;
 
-export function AlertsView({state,actor,mutate}:ViewProps) {
+export function AlertsView(props:ViewProps) {
+  const {state,actor,mutate}=props;
+  const [evidence,setEvidence]=useState<{transactionId:string;mode:'support'|'legalize'}|null>(null);
   const [query,setQuery]=useState('');
   const [severity,setSeverity]=useState('all');
   const [status,setStatus]=useState('open');
@@ -105,6 +121,8 @@ export function AlertsView({state,actor,mutate}:ViewProps) {
   const all=deriveAlerts(state,DEMO_DATE);
   const alerts=all.filter(alert=>(severity==='all'||alert.severity===severity)&&(status==='all'||(status==='open'?alert.status!=='resolved':alert.status===status))&&(alert.title+' '+alert.description+' '+alert.evidence+' '+alert.responsible).toLocaleLowerCase('es-CO').includes(query.toLocaleLowerCase('es-CO'))).sort((a,b)=>({critical:0,warning:1,info:2}[a.severity]-{critical:0,warning:1,info:2}[b.severity]));
   const detail=all.find(alert=>alert.id===detailId);
+  const alertTransaction=detail&&['missing_support','cash_legalization','cash_withdrawal_photo'].includes(detail.type)?state.transactions.find(row=>detail.id.endsWith(':'+row.id)):undefined;
+  const evidenceTransaction=evidence?state.transactions.find(row=>row.id===evidence.transactionId):undefined;
   const saveComment=(event:FormEvent<HTMLFormElement>)=>{
     event.preventDefault();if(!detail)return;const form=event.currentTarget;const text=String(new FormData(form).get('comment')||'');
     if(mutate(current=>resolving?resolveAlert(current,detail.id,text,actor):commentAlert(current,detail.id,text,actor),resolving?'Resolución documentada en el historial de la alerta.':'Comentario registrado.')){form.reset();setResolving(false);}
@@ -115,10 +133,12 @@ export function AlertsView({state,actor,mutate}:ViewProps) {
     {alerts.length?<div className="alert-list">{alerts.map(alert=><section className="alert-card" key={alert.id}><span className={'alert-symbol '+alert.severity}><AlertTriangle size={19}/></span><div className="alert-body"><div className="alert-title"><h3>{alert.title}</h3><Badge tone={alert.severity==='critical'?'red':alert.severity==='warning'?'orange':'blue'}>{severityLabels[alert.severity]}</Badge>{alert.status==='resolved'&&<Badge tone="green">Resuelta</Badge>}</div><p>{alert.description}</p><small>Responsable: {alert.responsible} · Límite: {dateLabel(alert.dueDate,true)}</small></div><button className="button button-secondary" onClick={()=>{setDetailId(alert.id);setResolving(false);}}>Ver evidencia<ArrowUpRight size={15}/></button></section>)}</div>:<Empty title="Sin alertas para este filtro" description="Los controles automáticos seguirán evaluando la información disponible."/>}
     {detail&&<Modal title={detail.title} subtitle={detail.description} onClose={()=>setDetailId(null)} wide><div className="detail-grid"><div className="detail-item"><small>Severidad</small><strong>{severityLabels[detail.severity]}</strong></div><div className="detail-item"><small>Estado</small><strong>{alertStatusLabels[detail.status]}</strong></div><div className="detail-item"><small>Responsable</small><strong>{detail.responsible}</strong></div><div className="detail-item"><small>Fecha límite</small><strong>{dateLabel(detail.dueDate)}</strong></div></div><div className="inline-note"><FileText size={18}/><p>{detail.evidence}</p></div>
       {detail.resolution&&<div className="inline-note"><CheckCheck size={18}/><p>Resolución: {detail.resolution}</p></div>}
+      {alertTransaction&&canWrite(actor)&&<div className="form-actions"><button className="button button-primary" onClick={()=>{setEvidence({transactionId:alertTransaction.id,mode:detail.type==='cash_legalization'?'legalize':'support'});setDetailId(null);}}><FileText size={16}/>{detail.type==='cash_legalization'?'Documentar legalización':'Anexar comprobante al movimiento'}</button></div>}
       <h3>Comentarios y seguimiento</h3>{detail.comments.length?<div className="comment-list">{detail.comments.map(comment=><article className="comment-card" key={comment.id}><strong>{comment.actorName}</strong><small>{timestamp(comment.date)}</small><p>{comment.text}</p></article>)}</div>:<p className="muted">Todavía no hay comentarios registrados.</p>}
       {canWrite(actor)&&<form onSubmit={saveComment}><Field label={resolving?'Evidencia de resolución':'Añadir comentario'} full hint={resolving?'Explica cómo se resolvió y dónde se puede comprobar. El historial se conserva.':undefined}><textarea name="comment" minLength={resolving?5:3} maxLength={2000} rows={3} required placeholder={resolving?'Describe la resolución y su evidencia…':'Registra el seguimiento de esta alerta…'}/></Field><div className="form-actions">{detail.status!=='resolved'&&<button type="button" className="button button-secondary" onClick={()=>setResolving(!resolving)}>{resolving?'Volver a comentario':'Documentar resolución'}</button>}<button type="submit" className="button button-primary">{resolving?<><Check size={16}/>Resolver alerta</>:<><MessageSquare size={16}/>Guardar comentario</>}</button></div></form>}
       {detail.history.length>0&&<><h3>Historial</h3><div className="audit-mini-list">{detail.history.map((event,index)=><p key={event.date+'-'+index}><strong>{event.action}</strong><small>{event.actorName} · {timestamp(event.date)}</small></p>)}</div></>}
     </Modal>}
+    {evidence&&evidenceTransaction&&<MovementEvidenceModal {...props} transaction={evidenceTransaction} mode={evidence.mode} onClose={()=>setEvidence(null)}/>}
   </>;
 }
 

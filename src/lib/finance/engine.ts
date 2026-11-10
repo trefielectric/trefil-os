@@ -1,6 +1,7 @@
 import { buildAmortization, validateDate } from './amortization';
 import { add, fromCents, money, rateFraction, sub, toCents } from './money';
 import type { Account, Actor, Alert, AuditEvent, Debt, DebtPaymentInput, Entry, Money, Reconciliation, State, Summary, Transaction, TransactionInput, UpcomingObligation } from './types';
+import { assertCashPostingAllowed, attachCashSupport, getCashAlerts, getCashReport, hasCashSupport, isCashEnabled, validateCashSupport } from './cash';
 
 export const ROLE_LABELS = { owner: 'Propietario', admin: 'Administrador general', treasury: 'Tesorería', accounting: 'Contabilidad', inventory: 'Inventarios', production: 'Producción', sales: 'Ventas', hr: 'Recursos humanos', employee: 'Empleado', auditor: 'Auditor de solo lectura' } as const;
 const FINANCE_ROLES = ['owner', 'admin', 'treasury', 'accounting'];
@@ -68,7 +69,7 @@ export function createTransaction(state: State, input: TransactionInput, actor: 
   authorize(state, actor, FINANCE_ROLES, input.locationId);
   requireLocation(state, input.locationId);
   requireText(input.idempotencyKey, 'La clave de idempotencia', 8);
-  const requestFingerprint = JSON.stringify({ kind: input.kind, date: input.date, description: input.description.trim(), party: input.party.trim(), category: input.category.trim(), locationId: input.locationId, amount: money(input.amount), accountId: input.accountId, destinationAccountId: input.destinationAccountId, support: input.support, direction: input.kind === 'adjustment' ? input.direction ?? 'in' : undefined });
+  const requestFingerprint = JSON.stringify({ kind: input.kind, date: input.date, description: input.description.trim(), party: input.party.trim(), category: input.category.trim(), locationId: input.locationId, amount: money(input.amount), accountId: input.accountId, destinationAccountId: input.destinationAccountId, support: input.support, direction: input.kind === 'adjustment' ? input.direction ?? 'in' : undefined, cashSessionIds: input.cashSessionIds });
   const existing = state.transactions.find(transaction => transaction.idempotencyKey === input.idempotencyKey);
   if (existing) {
     if (existing.requestedBy !== actor.id || existing.requestFingerprint !== requestFingerprint) throw new Error('La clave de idempotencia ya fue usada con otros datos.');
@@ -84,12 +85,15 @@ export function createTransaction(state: State, input: TransactionInput, actor: 
   const category = requireText(input.category, 'La clasificación');
   validateSupport(input.support);
   accountFor(state, input.accountId, input.locationId);
+  const cashSessionIds = assertCashPostingAllowed(state, {date:input.date,accountIds:[input.accountId,...(input.destinationAccountId?[input.destinationAccountId]:[])],sessionIds:input.cashSessionIds});
+  if(isCashEnabled(state)&&input.kind==='personal_expense')throw new Error('La salida personal excepcional requiere autorización institucional de CREADOR o GERENTE.');
   const next = copy(state);
   const debitKinds = ['income', 'opening', 'loan', 'adjustment'];
   let entries: Entry[];
   if (input.kind === 'transfer') {
     if (!input.destinationAccountId || input.destinationAccountId === input.accountId) throw new Error('Selecciona una cuenta de destino diferente.');
     accountFor(state, input.destinationAccountId, input.locationId);
+    if(isCashEnabled(state)&&state.accounts.some(row=>[input.accountId,input.destinationAccountId].includes(row.id)&&row.kind==='personal'))throw new Error('El traslado personal excepcional requiere autorización institucional de CREADOR o GERENTE.');
     entries = [entry(input.destinationAccountId, amount, '0.00'), entry(input.accountId, '0.00', amount)];
   } else {
     const controls = { income: 'income', expense: 'expense', opening: 'equity', advance: 'advances', reimbursement: 'reimbursements', salary: 'salaries', loan: 'loans', adjustment: 'adjustments', personal_expense: 'personal' };
@@ -97,7 +101,7 @@ export function createTransaction(state: State, input: TransactionInput, actor: 
     const incoming = debitKinds.includes(input.kind) && !(input.kind === 'adjustment' && input.direction === 'out');
     entries = incoming ? [entry(input.accountId, amount, '0.00'), entry(ledgerId, '0.00', amount)] : [entry(ledgerId, amount, '0.00'), entry(input.accountId, '0.00', amount)];
   }
-  const transaction: Transaction = { id: uid(), reference: `TF-${String(next.transactions.length + 1).padStart(5, '0')}`, date: input.date, description, party, category, locationId: input.locationId, kind: input.kind, status: needsApproval(input.kind, amount) ? 'pending' : 'posted', entries, amount, idempotencyKey: input.idempotencyKey, requestedBy: actor.id, createdAt: now(), support: input.support, origin: 'web', requestFingerprint };
+  const transaction: Transaction = { id: uid(), reference: `TF-${String(next.transactions.length + 1).padStart(5, '0')}`, date: input.date, description, party, category, locationId: input.locationId, kind: input.kind, status: needsApproval(input.kind, amount) ? 'pending' : 'posted', entries, amount, idempotencyKey: input.idempotencyKey, requestedBy: actor.id, createdAt: now(), support: input.support, origin: 'web', requestFingerprint, ...(isCashEnabled(state)?{cashSessionIds}:{}) };
   if (!isBalanced(transaction)) throw new Error('La transacción no está equilibrada.');
   next.transactions.unshift(transaction);
   audit(next, actor, transaction.status === 'pending' ? 'Solicitud de aprobación' : 'Movimiento registrado', 'financial_transaction', transaction.id, description, input.locationId);
@@ -111,9 +115,12 @@ export function approveTransaction(state: State, transactionId: string, actor: A
   if (original.status !== 'pending') throw new Error('Solo se puede aprobar un movimiento pendiente.');
   if (original.requestedBy === actor.id) throw new Error('La aprobación requiere otra persona autorizada.');
   if (!isBalanced(original)) throw new Error('No se puede aprobar un movimiento desequilibrado.');
+  if(isCashEnabled(state)&&original.reversalOf)throw new Error('La corrección requiere autorización institucional; una aprobación local no aplica el reverso.');
+  const cashSessionIds=assertCashPostingAllowed(state,{date:original.date,accountIds:original.entries.map(row=>row.accountId),sessionIds:original.cashSessionIds});
   const next = copy(state);
   const transaction = next.transactions.find(row => row.id === transactionId)!;
   transaction.status = 'posted'; transaction.approvedBy = actor.id; transaction.reason = requireText(reason, 'El motivo');
+  if(isCashEnabled(state))transaction.cashSessionIds=cashSessionIds;
   if (transaction.reversalOf) next.transactions.find(row => row.id === transaction.reversalOf)!.reversedBy = transaction.id;
   for (const payment of next.debtPayments.filter(row => row.transactionId === transactionId)) payment.status = 'posted';
   audit(next, actor, 'Movimiento aprobado', 'financial_transaction', transactionId, reason, transaction.locationId);
@@ -142,6 +149,7 @@ export function reverseTransaction(state: State, transactionId: string, reason: 
   authorize(state, actor, FINANCE_ROLES, original.locationId);
   if (original.status !== 'posted' || original.kind === 'reversal' || original.reversedBy || state.transactions.some(row => row.reversalOf === transactionId && row.status !== 'rejected')) throw new Error('El movimiento no puede reversarse o ya tiene un reverso.');
   requireText(reason, 'El motivo del reverso', 5);
+  if(isCashEnabled(state))throw new Error('Solicita una corrección de Caja pendiente de autorización institucional; no se permiten reversos locales sin esa autorización.');
   const next = copy(state);
   const transaction: Transaction = { ...original, id: uid(), reference: `TF-${String(next.transactions.length + 1).padStart(5, '0')}`, kind: 'reversal', description: `Reverso de ${original.reference}: ${reason.trim()}`, status: 'pending', entries: original.entries.map(row => ({ accountId: row.accountId, debit: row.credit, credit: row.debit })), date: todayBogota(), createdAt: now(), requestedBy: actor.id, idempotencyKey: `reversal:${transactionId}:${uid()}`, reversalOf: transactionId, reversedBy: undefined, approvedBy: undefined, reason: reason.trim(), origin: 'web' };
   next.transactions.unshift(transaction);
@@ -173,7 +181,8 @@ export function recordDebtPayment(state: State, input: DebtPaymentInput, actor: 
   if (!debt) throw new Error('La obligación no existe.');
   authorize(state, actor, FINANCE_ROLES, debt.locationId);
   requireText(input.idempotencyKey, 'La clave de idempotencia', 8);
-  const requestFingerprint = JSON.stringify({ debtId: input.debtId, accountId: input.accountId, date: input.date, amount: money(input.amount), interest: money(input.interest), principal: money(input.principal), appliedMonthlyRate: input.appliedMonthlyRate, support: input.support });
+  const insurance=money(input.insurance??'0.00');const commission=money(input.commission??'0.00');const lateFee=money(input.lateFee??'0.00');
+  const requestFingerprint = JSON.stringify({ debtId: input.debtId, accountId: input.accountId, date: input.date, amount: money(input.amount), interest: money(input.interest), principal: money(input.principal), appliedMonthlyRate: input.appliedMonthlyRate, support: input.support, insurance, commission, lateFee, supportUrl:input.supportUrl });
   const existing = state.transactions.find(transaction => transaction.idempotencyKey === input.idempotencyKey);
   if (existing) {
     const payment = state.debtPayments.find(row => row.transactionId === existing.id);
@@ -184,8 +193,11 @@ export function recordDebtPayment(state: State, input: DebtPaymentInput, actor: 
   if (input.date > todayBogota()) throw new Error('Un pago realizado no puede tener fecha futura.');
   if (input.date < debt.startDate) throw new Error('El pago no puede ser anterior al desembolso de la obligación.');
   accountFor(state, input.accountId, debt.locationId);
+  const cashSessionIds=assertCashPostingAllowed(state,{date:input.date,accountIds:[input.accountId]});
   const amount = positiveAmount(input.amount); const principal = money(input.principal); const interest = money(input.interest);
-  if (toCents(principal) < 0n || toCents(interest) < 0n || add(principal, interest) !== amount) throw new Error('El capital más el interés debe ser igual al pago.');
+  if ([principal,interest,insurance,commission,lateFee].some(value=>toCents(value)<0n)||add(principal,interest,insurance,commission,lateFee)!==amount) throw new Error('El capital más el interés, seguros, comisiones y mora debe ser igual al pago.');
+  validateCashSupport(input.support,input.supportUrl);
+  if(toCents(lateFee)>0n&&!input.support&&!input.supportUrl)throw new Error('Los cargos de mora requieren comprobante o documento verificable.');
   const reservedPrincipal = state.debtPayments.filter(row => row.debtId === debt.id && row.status === 'pending').reduce((total, row) => total + toCents(row.principal), 0n);
   if (toCents(principal) > toCents(getDebtBalance(state, debt.id)) - reservedPrincipal) throw new Error('El abono a capital supera el saldo disponible de la deuda.');
   if (input.appliedMonthlyRate) rateFraction(input.appliedMonthlyRate);
@@ -194,12 +206,13 @@ export function recordDebtPayment(state: State, input: DebtPaymentInput, actor: 
   const entries = [entry(input.accountId, '0.00', amount)];
   if (toCents(principal) > 0n) entries.push(entry(control(next, debt.locationId, 'debt-principal'), principal, '0.00'));
   if (toCents(interest) > 0n) entries.push(entry(control(next, debt.locationId, 'debt-interest'), interest, '0.00'));
-  const transaction: Transaction = { id: uid(), reference: `TF-${String(next.transactions.length + 1).padStart(5, '0')}`, kind: 'debt_payment', date: input.date, description: `Pago de obligación · ${debt.creditor}`, party: debt.creditor, category: 'Deudas e inversionistas', locationId: debt.locationId, status: needsApproval('debt_payment', amount) ? 'pending' : 'posted', amount, entries, idempotencyKey: input.idempotencyKey, requestedBy: actor.id, createdAt: now(), support: input.support, origin: 'web', requestFingerprint };
+  for(const [name,value] of [['debt-insurance',insurance],['debt-commission',commission],['debt-late-fee',lateFee]] as const)if(toCents(value)>0n)entries.push(entry(control(next,debt.locationId,name),value,'0.00'));
+  const transaction: Transaction = { id: uid(), reference: `TF-${String(next.transactions.length + 1).padStart(5, '0')}`, kind: 'debt_payment', date: input.date, description: `Pago de obligación · ${debt.creditor}`, party: debt.creditor, category: 'Deudas e inversionistas', locationId: debt.locationId, status: needsApproval('debt_payment', amount) ? 'pending' : 'posted', amount, entries, idempotencyKey: input.idempotencyKey, requestedBy: actor.id, createdAt: now(), support: input.support, origin: 'web', requestFingerprint, ...(isCashEnabled(state)?{cashSessionIds}:{}) };
   if (!isBalanced(transaction)) throw new Error('El pago no está equilibrado.');
   next.transactions.unshift(transaction);
-  next.debtPayments.unshift({ id: uid(), debtId: debt.id, transactionId: transaction.id, date: input.date, amount, principal, interest, status: transaction.status, appliedMonthlyRate: input.appliedMonthlyRate });
+  next.debtPayments.unshift({ id: uid(), debtId: debt.id, transactionId: transaction.id, date: input.date, amount, principal, interest, insurance,commission,lateFee,status: transaction.status, appliedMonthlyRate: input.appliedMonthlyRate });
   audit(next, actor, transaction.status === 'pending' ? 'Pago de deuda pendiente de aprobación' : 'Pago de deuda registrado', 'debt_payment', transaction.id, transaction.description, debt.locationId);
-  return next;
+  return input.supportUrl?attachCashSupport(next,{transactionId:transaction.id,supportUrl:input.supportUrl,notes:'Comprobante del pago de deuda'},actor):next;
 }
 
 export function reconcileAccount(state: State, input: { accountId: string; date: string; bankAmount: Money; notes?: string }, actor: Actor): State {
@@ -225,9 +238,13 @@ export function createAccount(state: State, input: Omit<Account, 'id' | 'created
   if (!['bank', 'cash', 'wallet', 'personal'].includes(input.kind)) throw new Error('Tipo de cuenta inválido.');
   requireText(input.name, 'El nombre de la cuenta'); requireText(input.custodian, 'El responsable');
   if (input.lastFour && !/^\d{4}$/.test(input.lastFour)) throw new Error('Escribe únicamente los últimos cuatro dígitos de la cuenta.');
+  if(input.accountNumber!==undefined&&!/^\d{6,34}$/.test(input.accountNumber))throw new Error('El número de cuenta debe contener entre 6 y 34 dígitos.');
+  if(input.accountNumber&&input.lastFour!==undefined&&input.lastFour!==input.accountNumber.slice(-4))throw new Error('Los últimos cuatro dígitos no coinciden con el número de cuenta.');
+  validateSupport(input.accountDocument);
+  if(isCashEnabled(state)&&input.kind==='bank'&&!input.accountNumber&&!input.accountDocument)throw new Error('Registra el número de cuenta bancaria o adjunta su documento.');
   if (input.kind === 'personal') { if (!input.businessUseAuthorizedUntil) throw new Error('Una cuenta personal requiere autorización temporal.'); validateDate(input.businessUseAuthorizedUntil); if (input.businessUseAuthorizedUntil < todayBogota()) throw new Error('La autorización no puede estar vencida.'); }
   const next = copy(state);
-  const account: Account = { ...input, name: input.name.trim(), custodian: input.custodian.trim(), id: uid(), createdAt: now(), origin: 'web' };
+  const account: Account = { ...input, lastFour:input.accountNumber?.slice(-4)??input.lastFour,name: input.name.trim(), custodian: input.custodian.trim(), id: uid(), createdAt: now(), origin: 'web' };
   next.accounts.push(account);
   audit(next, actor, 'Cuenta creada', 'account', account.id, account.name, account.locationId);
   return next;
@@ -285,7 +302,7 @@ export function deriveAlerts(state: State, today = todayBogota()): Alert[] {
     if (latest && latest.status === 'difference') push(`difference:${latest.id}`, 'balance_difference', 'Diferencia de conciliación', account.name, 'critical', account.custodian, `Libros COP ${latest.bookAmount}; extracto COP ${latest.bankAmount}; diferencia COP ${latest.difference}.`);
   }
   for (const transaction of state.transactions.filter(row => row.status === 'posted' && !row.reversalOf && !row.reversedBy && row.kind !== 'opening')) {
-    if (!transaction.support) push(`support:${transaction.id}`, 'missing_support', 'Movimiento sin soporte', transaction.description, 'warning', 'Tesorería', transaction.reference);
+    if (!hasCashSupport(state,transaction)) push(`support:${transaction.id}`, 'missing_support', 'Movimiento sin soporte', transaction.description, 'warning', 'Tesorería', transaction.reference);
     if (!transaction.category.trim() || /sin clasificar/i.test(transaction.category)) push(`category:${transaction.id}`, 'unclassified', 'Movimiento sin clasificar', transaction.description, 'warning', 'Contabilidad', transaction.reference);
     if (!isBalanced(transaction)) push(`balance:${transaction.id}`, 'unbalanced_transaction', transaction.kind === 'transfer' ? 'Traslado sin contrapartida' : 'Movimiento desequilibrado', transaction.description, 'critical', 'Contabilidad', transaction.reference);
   }
@@ -308,7 +325,7 @@ export function deriveAlerts(state: State, today = todayBogota()): Alert[] {
       else if (days <= 7) push(`upcoming:${debt.id}:${row.period}`, 'upcoming_installment', 'Cuota próxima', debt.creditor, 'info', 'Tesorería', `Cuota proyectada ${row.period}, COP ${row.amount}.`, row.date);
     }
     for (const payment of actualPayments) {
-      if (add(payment.principal, payment.interest) !== money(payment.amount)) push(`allocation:${payment.id}`, 'payment_allocation', 'Pago sin distribución válida', debt.creditor, 'critical', 'Contabilidad', `Pago COP ${payment.amount}; capital COP ${payment.principal}; interés COP ${payment.interest}.`);
+      if (add(payment.principal,payment.interest,payment.insurance??'0.00',payment.commission??'0.00',payment.lateFee??'0.00') !== money(payment.amount)) push(`allocation:${payment.id}`, 'payment_allocation', 'Pago sin distribución válida', debt.creditor, 'critical', 'Contabilidad', `Pago COP ${payment.amount}; capital COP ${payment.principal}; interés COP ${payment.interest}.`);
       if (payment.appliedMonthlyRate) {
         const applied = rateFraction(payment.appliedMonthlyRate);
         // Without an installment reference, a late payment may legitimately use an earlier
@@ -325,6 +342,7 @@ export function deriveAlerts(state: State, today = todayBogota()): Alert[] {
   const cutoff = today === todayBogota() ? Date.now() : Date.parse(`${today}T23:59:59-05:00`);
   if (!lastVerified || cutoff - Date.parse(lastVerified.completedAt!) > 86400000) push('backup-stale', 'backup_stale', 'Respaldo verificado pendiente', 'Han pasado más de 24 horas sin un respaldo verificado, o todavía no existe uno.', 'critical', 'Administrador general', lastVerified ? `Último verificado: ${lastVerified.completedAt}` : 'No hay respaldos empresariales verificados.');
   if (!backups.some(run => run.status === 'success' && run.restoreVerifiedAt)) push('restore-unverified', 'restore_unverified', 'Restauración no verificada', 'Falta una prueba de recuperación en un ambiente aislado.', 'warning', 'Administrador general', 'Una copia no equivale a una restauración comprobada.');
+  if(isCashEnabled(state))for(const alert of getCashAlerts(state,today))if(!results.some(row=>row.id===alert.id))results.push(alert);
   const persisted = new Map(state.alerts.map(alert => [alert.id, alert]));
   return results.map(alert => {
     const saved = persisted.get(alert.id);
@@ -336,6 +354,7 @@ export function deriveAlerts(state: State, today = todayBogota()): Alert[] {
 
 export function getSummary(state: State, today = todayBogota()): Summary {
   const month = today.slice(0, 7);
+  const cashReport=isCashEnabled(state)?getCashReport(state,{startDate:`${month}-01`,endDate:today}):undefined;
   const posted = state.transactions.filter(transaction => transaction.status === 'posted' && transaction.date.startsWith(month) && transaction.date <= today);
   const expenseKinds = ['expense', 'salary', 'reimbursement', 'personal_expense'];
   const payments = getEffectiveDebtPayments(state);
@@ -344,9 +363,9 @@ export function getSummary(state: State, today = todayBogota()): Summary {
     return source && kinds.includes(source.kind) ? total + toCents(transaction.amount) * (transaction.reversalOf ? -1n : 1n) : total;
   }, 0n));
   return {
-    available: add(...state.accounts.filter(account => account.active && account.kind !== 'ledger').map(account => getAccountBalance(state, account.id))),
-    income: netByKind(['income']),
-    expenses: netByKind(expenseKinds),
+    available: cashReport?.closingAvailable??add(...state.accounts.filter(account => account.active && account.kind !== 'ledger').map(account => getAccountBalance(state, account.id))),
+    income: cashReport?.externalInflows??netByKind(['income']),
+    expenses: cashReport?.operatingExpenses??netByKind(expenseKinds),
     debt: add(...state.debts.map(debt => getDebtBalance(state, debt.id))),
     interestPaid: add(...payments.map(payment => payment.interest)),
     principalPaid: add(...payments.map(payment => payment.principal)),
