@@ -26,11 +26,11 @@ test('actual gate subprocess uses Vercel inverted exit convention and logs no en
   assert.equal(absent.status, 0);
 });
 
-test('deployment configuration disables main Git deployment and retains the preview gate', () => {
+test('deployment configuration disables main, retains the preview gate, and uses automatic Next.js output', () => {
   assert.equal(config.ignoreCommand, 'node scripts/vercel-build-gate.mjs');
   assert.equal(config.git.deploymentEnabled.main, false);
   assert.equal(config.git.deploymentEnabled['codex/finance-preview'], true);
-  assert.equal(config.outputDirectory, 'out');
+  assert.equal(Object.hasOwn(config, 'outputDirectory'), false);
 });
 
 test('response policy restricts network access to the institutional project and denies embedding', () => {
