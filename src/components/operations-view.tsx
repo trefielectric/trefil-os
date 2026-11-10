@@ -119,7 +119,13 @@ export function AlertsView(props:ViewProps) {
   const [detailId,setDetailId]=useState<string|null>(null);
   const [resolving,setResolving]=useState(false);
   const all=deriveAlerts(state,DEMO_DATE);
-  const alerts=all.filter(alert=>(severity==='all'||alert.severity===severity)&&(status==='all'||(status==='open'?alert.status!=='resolved':alert.status===status))&&(alert.title+' '+alert.description+' '+alert.evidence+' '+alert.responsible).toLocaleLowerCase('es-CO').includes(query.toLocaleLowerCase('es-CO'))).sort((a,b)=>({critical:0,warning:1,info:2}[a.severity]-{critical:0,warning:1,info:2}[b.severity]));
+  const priority=(alert:typeof all[number])=>{
+    if(alert.type==='negative_balance'||(['cash_count_difference','cash_transfer_difference'].includes(alert.type)&&alert.severity==='critical'))return 0;
+    if(alert.type==='balance_difference'&&state.reconciliations.some(row=>alert.id.endsWith(':'+row.id)&&toCents(row.difference)<0n))return 0;
+    if(/finished_product|finished_goods|producto_terminado|inventory_shortage/.test(alert.type))return 1;
+    return 2;
+  };
+  const alerts=all.filter(alert=>(severity==='all'||alert.severity===severity)&&(status==='all'||(status==='open'?alert.status!=='resolved':alert.status===status))&&(alert.title+' '+alert.description+' '+alert.evidence+' '+alert.responsible).toLocaleLowerCase('es-CO').includes(query.toLocaleLowerCase('es-CO'))).sort((a,b)=>priority(a)-priority(b)||b.dueDate.localeCompare(a.dueDate));
   const detail=all.find(alert=>alert.id===detailId);
   const alertTransaction=detail&&['missing_support','cash_legalization','cash_withdrawal_photo'].includes(detail.type)?state.transactions.find(row=>detail.id.endsWith(':'+row.id)):undefined;
   const evidenceTransaction=evidence?state.transactions.find(row=>row.id===evidence.transactionId):undefined;
