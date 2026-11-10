@@ -3,13 +3,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { LayoutDashboard, ArrowRightLeft, Wallet, Landmark, CheckCheck, ShieldCheck, Bell, Activity, Settings, Search, ChevronDown, ChevronRight, Plus, Download, ArrowUpRight, ArrowDownLeft, ArrowRight, Building2, Menu, X, HardDrive, Check, LockKeyhole } from 'lucide-react';
 import { createEmptyState, formatCOP, getAccountBalance, getDebtBalance, deriveAlerts, toCents, fromCents, add } from '@/lib/finance';
 import type { State, Actor, Transaction } from '@/lib/finance';
-import { downloadFile, transactionsCSV } from '@/lib/export';
 import { LOCAL_STORAGE_KEY, LOCAL_WRITER_LOCK, initializeLocalStateStorage, decodeDemoState, inspectDemoState, holdDemoWriterLease } from '@/lib/demo-state';
 import { Badge, Empty, MutationFeedbackContext } from './ui';
 import { Brand, MobileBrand } from './brand';
-import { TransactionForm, TransactionDetail, TransactionsView } from './transaction-view';
-import { AccountsView, ReconciliationsView, ApprovalsView, AlertsView, AuditView, SettingsView } from './operations-view';
+import { TransactionDetail, TransactionsView } from './transaction-view';
+import { ReconciliationsView, ApprovalsView, AlertsView, AuditView, SettingsView } from './operations-view';
 import { DebtView } from './debt-view';
+import { CashModule, type CashModuleTab } from './cash-module';
 import { type View, type Mutation, type ViewProps, visibleAccounts, periodTotals, cashSeries, obligations, kindLabels, roleLabels, dateLabel, canWrite, WORKSPACE_DATE as DEMO_DATE } from './view-helpers';
 
 const STORAGE_KEY=LOCAL_STORAGE_KEY;
@@ -45,6 +45,7 @@ export function FinanceApp() {
   const current=useRef<State|null>(null);
   const [actorId,setActorId]=useState('');
   const [view,setView]=useState<View>('overview');
+  const [cashTab,setCashTab]=useState<CashModuleTab>('operations');
   const [location,setLocation]=useState('all');
   const [period,setPeriod]=useState(DEMO_DATE.slice(0,7));
   const [search,setSearch]=useState('');
@@ -54,7 +55,6 @@ export function FinanceApp() {
   const clearActionError=useCallback(()=>setActionError(''),[]);
   const [profileOpen,setProfileOpen]=useState(false);
   const [sidebarOpen,setSidebarOpen]=useState(false);
-  const [newMovement,setNewMovement]=useState(false);
   const [detail,setDetail]=useState<Transaction|null>(null);
   const searchRef=useRef<HTMLInputElement>(null);
   const timer=useRef<ReturnType<typeof setTimeout>|null>(null);
@@ -63,6 +63,10 @@ export function FinanceApp() {
   const lastSnapshot=useRef<string|null>(null);
   const readOnlyReason=useRef('Esperando el control de escritura del espacio local.');
   const notify=useCallback((message:string)=>{setToast(message);if(timer.current)clearTimeout(timer.current);timer.current=setTimeout(()=>setToast(''),5500);},[]);
+  useEffect(()=>{
+    const navigate=()=>{const [section,tab]=window.location.hash.slice(1).split('/');if(section==='caja'){setView('accounts');if(['operations','accounts','statements','reports'].includes(tab))setCashTab(tab as CashModuleTab);}};
+    navigate();window.addEventListener('hashchange',navigate);return()=>window.removeEventListener('hashchange',navigate);
+  },[]);
   useEffect(()=>{
     let disposed=false;
     const show=(snapshot:State,resetActor=false)=>{
@@ -148,10 +152,11 @@ export function FinanceApp() {
   const openAlerts=alerts.filter(a=>a.status!=='resolved');
   const pending=state.transactions.filter(t=>t.status==='pending');
   const counts:Partial<Record<View,number>>={approvals:pending.length,alerts:openAlerts.length};
-  const go=(id:View)=>{setView(id);setSearch('');setSidebarOpen(false);};
+  const go=(id:View)=>{setView(id);setSearch('');setSidebarOpen(false);window.history.replaceState(null,'',id==='accounts'?'#caja/'+cashTab:'#'+id);};
+  const openCash=(tab:CashModuleTab)=>{setCashTab(tab);setView('accounts');setSearch('');setSidebarOpen(false);window.history.replaceState(null,'','#caja/'+tab);};
   const props:ViewProps={state,actor,location,mutate,notify};
   const hasAccounts=visibleAccounts(state,location).some(account=>account.active);
-  const exportReport=()=>{const filtered=state.transactions.filter(t=>(location==='all'||t.locationId===location)&&t.date.startsWith(period));downloadFile('trefil-movimientos-'+period+'.csv',transactionsCSV(state,filtered));notify('Reporte local exportado con el detalle de cada asiento.');};
+  const exportReport=()=>openCash('reports');
   return <MutationFeedbackContext.Provider value={{message:actionError,clear:clearActionError}}><div className="app-shell">
     {sidebarOpen&&<button className="mobile-overlay" aria-label="Cerrar menú" onClick={()=>setSidebarOpen(false)}/>}
     <aside className={'sidebar '+(sidebarOpen?'sidebar-open':'')}>
@@ -168,11 +173,11 @@ export function FinanceApp() {
       <main id="main-content">
         <div className="demo-bar"><span><i/> ESPACIO LOCAL <b>Guardado en este navegador · Conexión institucional pendiente</b></span><button onClick={()=>go('settings')}>Estado de implementación <ArrowRight size={13}/></button></div>
         {error&&<div className="error-banner" role="alert">{error}<button aria-label="Cerrar aviso de almacenamiento" onClick={()=>setError('')}><X size={16}/></button></div>}
-        <section className="page-heading"><div><div className="eyebrow">FINANZAS <span>/</span> {view==='overview'?'VISTA GENERAL':navItems.find(i=>i.id===view)?.label.toUpperCase()}</div><h1>{titles[view].title.replace(/\.$/,'')}<span className="heading-dot">.</span></h1><p>{titles[view].subtitle}</p></div><div className="heading-buttons"><button className="button button-secondary" onClick={exportReport}><Download size={16}/><span>Exportar reporte</span></button>{canWrite(actor)&&(hasAccounts||view!=='accounts')&&<button className="button button-primary" onClick={()=>hasAccounts?setNewMovement(true):go('accounts')}><Plus size={18}/>{hasAccounts?'Nuevo movimiento':'Crear primera cuenta'}</button>}</div></section>
+        <section className="page-heading"><div><div className="eyebrow">FINANZAS <span>/</span> {view==='overview'?'VISTA GENERAL':navItems.find(i=>i.id===view)?.label.toUpperCase()}</div><h1>{titles[view].title.replace(/\.$/,'')}<span className="heading-dot">.</span></h1><p>{titles[view].subtitle}</p></div><div className="heading-buttons"><button className="button button-secondary" onClick={exportReport}><Download size={16}/><span>Exportar reporte</span></button>{canWrite(actor)&&view!=='accounts'&&<button className="button button-primary" onClick={()=>openCash(hasAccounts?'operations':'accounts')}><Plus size={18}/>{hasAccounts?'Ir a Caja':'Crear primera cuenta'}</button>}</div></section>
         <div className="context-bar"><div className="context-date"><CalendarIcon/><span>Al <strong>{new Intl.DateTimeFormat('es-CO',{dateStyle:'long',timeZone:'America/Bogota'}).format(new Date(DEMO_DATE+'T12:00:00Z'))}</strong></span><span className="context-dot">·</span><span>COP <span className="muted">/</span> Bogotá</span></div><div className="context-filters"><label><Building2 size={14}/><select aria-label="Filtrar por sede" value={location} onChange={e=>setLocation(e.target.value)}><option value="all">Todas las sedes</option>{state.locations.map(l=><option key={l.id} value={l.id}>{l.name}</option>)}</select></label>{['overview','transactions'].includes(view)&&<label><select aria-label="Período del reporte" value={period} onChange={e=>setPeriod(e.target.value)}>{reportPeriods.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select></label>}</div></div>
         {view==='overview'&&<Overview {...props} period={period} go={go} onDetail={setDetail}/>}
-        {view==='transactions'&&<TransactionsView {...props} period={period} search={search} onSearch={setSearch} onDetail={setDetail} onCreate={()=>setNewMovement(true)}/>}
-        {view==='accounts'&&<AccountsView {...props}/>}
+        {view==='transactions'&&<TransactionsView {...props} period={period} search={search} onSearch={setSearch} onDetail={setDetail} onCreate={()=>openCash('operations')}/>}
+        {view==='accounts'&&<CashModule {...props} tab={cashTab} onTabChange={openCash}/>}
         {view==='debts'&&<DebtView {...props}/>}
         {view==='reconciliations'&&<ReconciliationsView {...props}/>}
         {view==='approvals'&&<ApprovalsView {...props} onDetail={setDetail}/>}
@@ -182,7 +187,6 @@ export function FinanceApp() {
         <footer className="page-footer"><span><ShieldCheck size={13}/> Trefil Electric · Trazabilidad en cada decisión</span><span>Fase 01 <i/> Finanzas y control</span></footer>
       </main>
     </div>
-    {newMovement&&<TransactionForm {...props} onClose={()=>setNewMovement(false)}/>}
     {detail&&<TransactionDetail {...props} transaction={state.transactions.find(t=>t.id===detail.id)??detail} onClose={()=>setDetail(null)}/>}
     {toast&&<div className="toast" role="status"><span className="toast-icon"><Check size={17}/></span><p>{toast}</p><button className="icon-button" aria-label="Cerrar notificación" onClick={()=>setToast('')}><X size={15}/></button></div>}
   </div></MutationFeedbackContext.Provider>;
