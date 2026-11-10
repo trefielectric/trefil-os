@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "./cash.css";
+@import "./inventory.css";
 
 :root{--brand-navy:#1d3d6a;--brand-yellow:#f8e62b;--brand-yellow-soft:#fffbe3;--ink:#243957;--muted:#6b7b90;--line:#e2e8f0;--canvas:#f5f7fb;--green:#327453;--radius:12px;color-scheme:light}
 *{box-sizing:border-box}
