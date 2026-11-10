@@ -1,4 +1,5 @@
 import type { State } from './types';
+import { createEmptyCashState } from './cash';
 
 /** A fresh local workspace has no sample accounts, people, money or documents. */
 export function createEmptyState(): State {
@@ -16,5 +17,6 @@ export function createEmptyState(): State {
     alerts: [],
     audit: [],
     backups: [],
+    cash: createEmptyCashState(),
   };
 }
