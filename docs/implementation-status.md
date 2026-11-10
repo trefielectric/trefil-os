@@ -26,6 +26,14 @@ Las operaciones en bancos y billeteras son directas; los turnos solo se aplican 
 
 TypeScript, build y **141/141 pruebas** de la entrega de Caja aprobaron. Se comprobó en navegador el ciclo de apertura, movimiento, arqueo, bloqueo por faltante, cierre ordinario y recarga; las dos descargas reales comparten versión. Se revisó el PDF de QA completo de cuatro páginas y el XLSX con comprobación global y por cuenta igual a cero. El origen de QA está aislado y los datos del Preview del usuario se conservan sin ejemplos. El detalle se encuentra en [el alcance de Caja](caja-module.md).
 
+## Inventarios local implementado
+
+El usuario autorizó implementar el PDF del módulo Inventarios y confirmó tres criterios: dos conformidades documentadas de Producción y Ventas con cantidades idénticas; actas de conteo con responsable y soporte; precios de cierre manuales por período con referencia a compras de Caja, sin elegir automáticamente entre precios distintos.
+
+La copia de trabajo incorpora cinco inventarios, ORIGEN único, cantidades exactas, dos bodegas vacías, lotes documentales, garantías en cuarentena, control de pesos de chatarra, precios por período, informes PDF/XLSX y cierres independientes. Las integraciones enlazan egresos e ingresos reales del libro local y permiten compensar chatarra con una factura documentada de proveedor sin movimiento ficticio de dinero. Se conservan los datos válidos anteriores; no se reinicia el almacenamiento del usuario al incorporar el módulo.
+
+Las conformidades departamentales son documentos, no sesiones institucionales. Omisiones, ajustes excepcionales, reclasificaciones/pérdidas y cambios de facturas o lotes cerrados generan solicitudes pendientes. No se han añadido tablas de stock a Supabase ni conectado Caja/Inventarios con bancos, facturación fiscal o cuentas institucionales. El alcance y las limitaciones se describen en [Inventarios](inventory-module.md); la validación integrada y la publicación tienen evidencia independiente en [Verificación](verification.md).
+
 ## Qué está implementado y qué sigue pendiente
 
 La web conserva las funciones para movimientos equilibrados, aprobaciones independientes, reversos, cuentas, conciliaciones, obligaciones, pagos separados entre capital e interés, simulaciones, alertas y auditoría. Sus listas empiezan vacías. El perfil local **no es autenticación ni autorización institucional** y no sustituye a las personas distintas que exige una aprobación empresarial. Cualquier dato del navegador puede ser editado por su usuario y nunca debe usarse como autoridad empresarial.

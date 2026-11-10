@@ -8,6 +8,7 @@
     "deploymentEnabled": {
       "main": false,
       "codex/caja-module": false,
+      "codex/inventory-module": false,
       "codex/finance-preview": true
     }
   },

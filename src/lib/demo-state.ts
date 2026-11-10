@@ -1,5 +1,6 @@
 import { add, buildAmortization, fromCents, getAccountBalance, getDebtBalance, getSummary, isBalanced, money, rateFraction, toCents, validateDate, type State } from './finance';
 import { createEmptyState } from './finance/empty';
+import { validateInventoryState } from './inventory/validation';
 import { validateCashState } from './finance/cash-validation';
 
 export const DEMO_STORAGE_KEY = 'trefil-os:demo:v1';
@@ -136,9 +137,10 @@ export function inspectDemoState(value: unknown): { ok: true; state: State } | {
     const debts = list(root.debts,'debts',1000); const debtIds = uniqueIds(debts,'debts');
     debts.forEach((value,index) => {
       const item = object(value,'debt'); const path = `debts[${index}]`;
-      text(item.creditor,`${path}.creditor`,1,255); choice(item.kind,['loan','investment'],`${path}.kind`); choice(item.status,['active','paid'],`${path}.status`); decimal(item.principal,`${path}.principal`,true);
+      text(item.creditor,`${path}.creditor`,1,255); choice(item.kind,['loan','investment','supplier'],`${path}.kind`); choice(item.status,['active','paid'],`${path}.status`); decimal(item.principal,`${path}.principal`,true);
       date(item.startDate,`${path}.startDate`); text(item.monthlyRate,`${path}.monthlyRate`,1,20); integer(item.installments,`${path}.installments`,1,600); integer(item.dueDay,`${path}.dueDay`,1,31); choice(item.method,['fixed_payment','fixed_principal','interest_only'],`${path}.method`);
       if (!locationIds.has(identifier(item.locationId,`${path}.locationId`))) invalid(`${path}.locationId`);
+      if(item.kind==='supplier'){text(item.supplierInvoice,`${path}.supplierInvoice`);date(item.supplierDueDate,`${path}.supplierDueDate`);if(String(item.supplierDueDate)<String(item.startDate)||item.monthlyRate!=='0.00'||item.installments!==1||item.graceMonths||Array.isArray(item.extraPayments)&&item.extraPayments.length||Array.isArray(item.rateChanges)&&item.rateChanges.length)invalid(`${path}.supplierTerms`);}
       optionalText(item.guarantee,`${path}.guarantee`); optionalText(item.notes,`${path}.notes`); optionalTime(item.createdAt,`${path}.createdAt`); support(item.contract,`${path}.contract`);
       if (item.graceMonths !== undefined) integer(item.graceMonths,`${path}.graceMonths`,0,599);
       if (item.extraPayments !== undefined) list(item.extraPayments,`${path}.extraPayments`,600).forEach((value,index) => { const extra = object(value,`${path}.extraPayments[${index}]`); integer(extra.period,`${path}.extraPayments.period`,1,600); decimal(extra.amount,`${path}.extraPayments.amount`,true); });
@@ -190,6 +192,7 @@ export function inspectDemoState(value: unknown): { ok: true; state: State } | {
     // overflowing canonical money or accepting an overpaid debt.
     try {
       if(root.cash!==undefined)validateCashState(state);
+      if(root.inventory!==undefined)validateInventoryState(state);
       state.accounts.forEach(account => getAccountBalance(state,account.id));
       state.debts.forEach(debt => { if (toCents(getDebtBalance(state,debt.id)) < 0n) invalid('debtPayments.capital superior al saldo'); });
       getSummary(state,'2026-11-10');

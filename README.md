@@ -4,7 +4,7 @@ Base modular para el control empresarial exclusivo de Trefil Electric. El espaci
 
 ## Inicio limpio
 
-`createEmptyState` inicializa solamente Trefil Electric, una sede principal y un perfil técnico `local-owner`. Ese perfil identifica cambios en el navegador: **no representa una cuenta autenticada ni un propietario aprovisionado en Supabase**. Los formularios no precargan acreedores, cuentas, importes, tasas o cuotas ficticias.
+`createEmptyState` inicializa solamente Trefil Electric, una sede principal, dos bodegas sin existencias y un perfil técnico `local-owner`. Ese perfil identifica cambios en el navegador: **no representa una cuenta autenticada ni un propietario aprovisionado en Supabase**. Los formularios no precargan acreedores, cuentas, importes, tasas o cuotas ficticias.
 
 El espacio nuevo utiliza `trefil-os:local:v1` y un bloqueo de escritura independiente. Los datos del escenario anterior, bajo `trefil-os:demo:v1`, se conservan sin cargarse, migrarse ni mezclarse con el libro nuevo. Este cambio no borra ni modifica recursos remotos. Los fixtures con COP 128.000.000 siguen disponibles exclusivamente para las pruebas automatizadas; no se usan como estado inicial de la aplicación.
 
@@ -43,7 +43,15 @@ Los indicadores financieros arrancan en cero y las listas sin registros. La ause
 
 La implementación de Caja incorpora turnos de efectivo, arqueo por denominaciones, registro y documentación de movimientos, seguimiento de legalizaciones, recepción de traslados, cierre mensual local, conciliación manual de extractos CSV e informes PDF/Excel. Las plantillas de ocho cuentas y cuatro pasarelas solo completan formularios: no crean cuentas, responsables ni dinero automáticamente. Bancos y billeteras registran operaciones directamente; los turnos corresponden exclusivamente a efectivo.
 
-Las cinco decisiones que dejaba abiertas la especificación fueron confirmadas por el usuario. Las solicitudes de corrección y cierre excepcional permanecen pendientes de autorización institucional; no se simula MFA ni se acepta un PIN local como autorización empresarial. El alcance detallado, las decisiones y sus límites se describen en [Módulo Caja](docs/caja-module.md). La integración nueva está en verificación: no hereda automáticamente la evidencia de las 95 pruebas del inicio limpio.
+Las cinco decisiones que dejaba abiertas la especificación fueron confirmadas por el usuario. Las solicitudes de corrección y cierre excepcional permanecen pendientes de autorización institucional; no se simula MFA ni se acepta un PIN local como autorización empresarial. El alcance detallado, las decisiones y sus límites se describen en [Módulo Caja](docs/caja-module.md). Caja fue verificada y publicada en el Preview protegido; su evidencia se conserva en la documentación de verificación.
+
+## Módulo Inventarios
+
+Cinco inventarios independientes: activos, materia prima, insumos, chatarra y producto terminado. Cada uno tiene catálogo, ORIGEN único documentado, movimientos, actas de conteo, novedades, cierre local y PDF/Excel mensual. Las cantidades se calculan con seis decimales exactos; los conteos y valores desconocidos se distinguen del cero explícito. Las dos bodegas configuradas empiezan sin productos ni existencias.
+
+Las compras se reciben una sola vez desde el egreso real de Caja. Los cobros parciales enlazan ingresos ya contabilizados; la compensación de chatarra reduce una factura de proveedor sin crear efectivo ficticio. Los lotes requieren dos conformidades documentales coincidentes antes de aumentar stock. Los despachos descuentan únicamente su bodega y las devoluciones por garantía permanecen en cuarentena.
+
+Producción y Ventas se referencian mediante documentos; no se han implementado sus módulos completos ni facturación fiscal. Los precios de materiales e insumos son manuales por período y se vinculan a compras de Caja. Omisiones históricas, ajustes excepcionales, pérdidas y correcciones de documentos cerrados quedan pendientes de autorización institucional. Los cambios cerrados de facturas o lotes requieren exclusivamente Creador. [Alcance e informes de Inventarios](docs/inventory-module.md).
 
 Los importes se transportan como cadenas decimales y se calculan con centavos `BigInt`; PostgreSQL usa `numeric(18,2)`. Las tasas del simulador son porcentajes **mensuales vencidos**, con redondeo a centavos por período. El plan contractual y las proyecciones no representan pagos realizados ni una liquidación diaria del acreedor. Los anticipos y préstamos recibidos se distinguen de los ingresos y gastos operativos; el flujo de caja sí refleja sus entradas o salidas efectivas.
 
@@ -66,7 +74,7 @@ La configuración prevista utiliza únicamente `NEXT_PUBLIC_SUPABASE_URL` y `NEX
 
 ## Preview y producción
 
-El proyecto Vercel `administrativo914/trefil-os` está conectado al repositorio público y dispone de [un enlace de vista previa](https://trefil-os-git-codex-finance-preview-administrativo914.vercel.app/) en Hobby, sin contratar Pro. La última base publicada y verificada antes de integrar Caja fue `f62989b`, con estado Ready y CI aprobado. La nueva versión de Caja requiere su propia validación y publicación; ese enlace no acredita que todos los cambios de la copia de trabajo ya estén desplegados.
+El proyecto Vercel `administrativo914/trefil-os` está conectado al repositorio público y dispone de [un enlace de vista previa](https://trefil-os-git-codex-finance-preview-administrativo914.vercel.app/) en Hobby, sin contratar Pro. Caja se publicó y verificó sobre la base `f94c813`. Inventarios se integra a la misma rama de Preview después de sus propias verificaciones; el estado exacto de cada publicación consta en el registro de verificación.
 
 La configuración utiliza Next.js, raíz de repositorio vacía (el `package.json` remoto está en la raíz), Node `24.x`, instalación `npm ci` y build `npm run build`. Se eliminó el override `outputDirectory`: el adaptador de Vercel detecta `.next`, lee los manifiestos y procesa la exportación estática `out/`. Forzar `out` como directorio del adaptador causaba un error al buscar `routes-manifest.json`. `engines.node` fija la misma versión mayor que CI. La autenticación de Vercel está activada para **All Deployments**, sin enlaces de bypass. No se habilitó producción ni se contrataron complementos pagados. Cambiar el origen de localhost a Vercel crea un almacenamiento local separado y no sincroniza registros ni los conecta a PostgreSQL.
 
@@ -89,5 +97,6 @@ Las herramientas manuales están disponibles mediante `npm run backup`, `npm run
 - [Respaldo, retención y recuperación](docs/recovery.md)
 - [Estado de implementación](docs/implementation-status.md)
 - [Módulo Caja: alcance, decisiones y verificación](docs/caja-module.md)
+- [Módulo Inventarios: alcance e informes](docs/inventory-module.md)
 
 No se han conectado Microsoft Graph, Outlook, OneDrive ni Google Drive. La importación de documentos históricos requiere identificar su propietario y autorización específica. El repositorio contiene código y fixtures ficticios de pruebas; los secretos, respaldos y registros reales permanecen fuera de él.
