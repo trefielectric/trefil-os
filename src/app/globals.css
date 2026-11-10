@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./cash.css";
 
 :root{--brand-navy:#1d3d6a;--brand-yellow:#f8e62b;--brand-yellow-soft:#fffbe3;--ink:#243957;--muted:#6b7b90;--line:#e2e8f0;--canvas:#f5f7fb;--green:#327453;--radius:12px;color-scheme:light}
 *{box-sizing:border-box}
@@ -481,3 +482,5 @@ textarea{resize:vertical;min-height:88px;line-height:1.6}
 @media(max-width:600px){.breadcrumbs>.workspace-breadcrumb{display:none}}
 @media(max-width:1000px){.mobile-brand{display:flex;align-items:center;flex-shrink:0;margin-right:3px}.mobile-brand img{display:block;width:48px;height:auto;object-fit:contain}.breadcrumbs{gap:8px}}
 @media(max-width:600px){.topbar{height:67px}.mobile-brand img{width:50px}.breadcrumbs{gap:5px}.breadcrumbs>strong,.breadcrumbs>svg{display:none}.global-search input{width:min(132px,35vw)}.login-art{padding:25px 28px;gap:30px}.login-art .brand{width:172px;padding:9px 13px}.login-art .brand-logo{width:143px}.login-art .brand-caption{font-size:8px}.login-art h1{font-size:31px}}
+
+.cash-module-nav{display:flex;gap:5px;border-bottom:1px solid var(--line);margin-bottom:22px;overflow-x:auto}.cash-module-nav button{display:flex;align-items:center;gap:8px;padding:13px 16px;border-bottom:3px solid transparent;white-space:nowrap;font-weight:600;color:var(--muted)}.cash-module-nav button.active{border-color:var(--brand-yellow);color:var(--brand-navy);background:#fff}.cash-statement-preview{max-height:310px;overflow:auto}.cash-statement-line{padding:16px;border-top:1px solid var(--line)}.cash-statement-line .form-actions{flex-wrap:wrap}.cash-statement-import-card{padding:20px;margin-bottom:16px}.cash-statement-import-card h3{margin:0}.cash-statement-count{font-size:28px;font-weight:700}
