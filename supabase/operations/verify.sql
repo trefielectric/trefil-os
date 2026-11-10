@@ -11,7 +11,8 @@ with expected(name) as (values
 ), provider_events as (
  select p.proname,pg_get_userbyid(p.proowner) as owner,
         pg_get_function_result(p.oid) as return_type,p.proconfig,t.evtname,t.evtenabled,
-        has_function_privilege('anon',p.oid,'EXECUTE') as anonymous_execute
+        has_function_privilege('anon',p.oid,'EXECUTE') as anonymous_execute,
+        has_function_privilege('authenticated',p.oid,'EXECUTE') as authenticated_execute
  from pg_proc p join pg_namespace n on n.oid=p.pronamespace
  left join pg_event_trigger t on t.evtfoid=p.oid
  where n.nspname='public' and p.prosecdef
