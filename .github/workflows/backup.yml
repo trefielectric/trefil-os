@@ -1,0 +1,73 @@
+name: Respaldo diario cifrado
+
+on:
+  schedule:
+    - cron: '0 8 * * *' # 03:00 America/Bogota (UTC-5).
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: trefil-daily-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    # Opt-in. This source file alone does not activate or verify a daily copy.
+    if: vars.TREFIL_BACKUP_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    environment: backups
+    defaults:
+      run:
+        shell: bash
+    env:
+      TREFIL_BACKUP_OUTPUT: ${{ runner.temp }}/trefil-encrypted
+      TREFIL_BACKUP_RETENTION_DAYS: '30'
+      TREFIL_BACKUP_KEY: ${{ secrets.TREFIL_BACKUP_KEY }}
+      TREFIL_BACKUP_ORGANIZATION_ID: ${{ vars.TREFIL_BACKUP_ORGANIZATION_ID }}
+      TREFIL_BACKUP_PGHOST: ${{ secrets.TREFIL_BACKUP_PGHOST }}
+      TREFIL_BACKUP_PGPORT: ${{ secrets.TREFIL_BACKUP_PGPORT }}
+      TREFIL_BACKUP_PGDATABASE: ${{ secrets.TREFIL_BACKUP_PGDATABASE }}
+      TREFIL_BACKUP_PGUSER: ${{ secrets.TREFIL_BACKUP_PGUSER }}
+      TREFIL_BACKUP_PGPASSWORD: ${{ secrets.TREFIL_BACKUP_PGPASSWORD }}
+      TREFIL_BACKUP_PGSSLMODE: verify-full
+      TREFIL_BACKUP_PGSSLROOTCERT: ${{ secrets.TREFIL_BACKUP_PGSSLROOTCERT }}
+      TREFIL_RECORD_PGHOST: ${{ secrets.TREFIL_RECORD_PGHOST }}
+      TREFIL_RECORD_PGPORT: ${{ secrets.TREFIL_RECORD_PGPORT }}
+      TREFIL_RECORD_PGDATABASE: ${{ secrets.TREFIL_RECORD_PGDATABASE }}
+      TREFIL_RECORD_PGUSER: ${{ secrets.TREFIL_RECORD_PGUSER }}
+      TREFIL_RECORD_PGPASSWORD: ${{ secrets.TREFIL_RECORD_PGPASSWORD }}
+      TREFIL_RECORD_PGSSLMODE: verify-full
+      TREFIL_RECORD_PGSSLROOTCERT: ${{ secrets.TREFIL_RECORD_PGSSLROOTCERT }}
+      TREFIL_SUPABASE_URL: ${{ vars.TREFIL_SUPABASE_URL }}
+      TREFIL_SUPABASE_BACKUP_SECRET: ${{ secrets.TREFIL_SUPABASE_BACKUP_SECRET }}
+      TREFIL_BACKUP_BUCKETS: ${{ vars.TREFIL_BACKUP_BUCKETS }}
+      PG_MAJOR: ${{ vars.TREFIL_POSTGRES_CLIENT_MAJOR || '18' }}
+    steps:
+      # Official release commits verified against actions/* release pages.
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+      - name: Seleccionar cliente PostgreSQL compatible
+        run: |
+          set -euo pipefail
+          [[ "$PG_MAJOR" =~ ^(16|17|18|19)$ ]] || { echo INVALID_POSTGRES_MAJOR; exit 1; }
+          test -x "/usr/lib/postgresql/${PG_MAJOR}/bin/pg_dump" || { echo POSTGRES_CLIENT_NOT_INSTALLED; exit 1; }
+          echo "/usr/lib/postgresql/${PG_MAJOR}/bin" >> "$GITHUB_PATH"
+      - name: Instalar dependencias bloqueadas
+        run: npm ci --ignore-scripts
+      - name: Capturar, cifrar y verificar
+        run: node scripts/backup/cli.mjs backup
+      - name: Conservar únicamente el respaldo cifrado y su recibo
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: trefil-copia-cifrada-${{ github.run_id }}
+          path: ${{ runner.temp }}/trefil-encrypted/
+          retention-days: 30
+          if-no-files-found: error
+          compression-level: 0
