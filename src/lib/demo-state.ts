@@ -1,7 +1,10 @@
 import { add, buildAmortization, fromCents, getAccountBalance, getDebtBalance, getSummary, isBalanced, money, rateFraction, toCents, validateDate, type State } from './finance';
+import { createEmptyState } from './finance/empty';
 
 export const DEMO_STORAGE_KEY = 'trefil-os:demo:v1';
 export const DEMO_WRITER_LOCK = 'trefil-os-demo-write';
+export const LOCAL_STORAGE_KEY = 'trefil-os:local:v1';
+export const LOCAL_WRITER_LOCK = 'trefil-os-local-write';
 type ObjectValue = Record<string, unknown>;
 const roles = ['owner','admin','treasury','accounting','inventory','production','sales','hr','employee','auditor'];
 const kinds = ['income','expense','transfer','opening','advance','reimbursement','salary','loan','adjustment','reversal','debt_payment','personal_expense'];
@@ -60,7 +63,7 @@ export function inspectDemoState(value: unknown): { ok: true; state: State } | {
     const root = object(value,'estado');
     if (root.version !== 1) invalid('version');
     const organization = object(root.organization,'organization');
-    if (organization.id !== 'demo-trefil-electric' || organization.name !== 'Trefil Electric') invalid('organization');
+    if (typeof organization.id !== 'string' || !['demo-trefil-electric','local-trefil-electric'].includes(organization.id) || organization.name !== 'Trefil Electric') invalid('organization');
     text(organization.taxId,'organization.taxId',1,255);
     const locations = list(root.locations,'locations',1000); if (!locations.length) invalid('locations');
     const locationIds = uniqueIds(locations,'locations'); locations.forEach((value,index) => text(object(value,'location').name,`locations[${index}].name`,1,255));
@@ -109,7 +112,7 @@ export function inspectDemoState(value: unknown): { ok: true; state: State } | {
       if (!isBalanced(transaction) || add(...transaction.entries.map(row => row.debit)) !== amount) invalid(`${path}.asiento equilibrado`);
       // Compatibility with the one immutable original fixture that omitted its
       // approver metadata. Preserve the snapshot; never invent an approval/audit.
-      const legacyWalletOpening = item.origin === 'demo_fixture' && item.id === 'demo-tx-4' && item.idempotencyKey === 'seed:demo-tx-4' && item.kind === 'opening' && item.status === 'posted' && item.date === '2026-11-01' && item.amount === '4000000.00' && item.locationId === 'sede-principal' && item.requestedBy === 'demo-treasury' && item.description === 'Saldo de apertura ficticio' && transaction.entries.length === 2 && transaction.entries.some(row => row.accountId === 'nequi' && row.debit === '4000000.00' && row.credit === '0.00') && transaction.entries.some(row => row.accountId === 'ledger-equity-sede-principal' && row.credit === '4000000.00' && row.debit === '0.00');
+      const legacyWalletOpening = organization.id === 'demo-trefil-electric' && item.origin === 'demo_fixture' && item.id === 'demo-tx-4' && item.idempotencyKey === 'seed:demo-tx-4' && item.kind === 'opening' && item.status === 'posted' && item.date === '2026-11-01' && item.amount === '4000000.00' && item.locationId === 'sede-principal' && item.requestedBy === 'demo-treasury' && item.description === 'Saldo de apertura ficticio' && transaction.entries.length === 2 && transaction.entries.some(row => row.accountId === 'nequi' && row.debit === '4000000.00' && row.credit === '0.00') && transaction.entries.some(row => row.accountId === 'ledger-equity-sede-principal' && row.credit === '4000000.00' && row.debit === '0.00');
       if (item.status === 'posted' && (toCents(amount) >= 500000000n || ['opening','adjustment','personal_expense','debt_payment','reversal'].includes(String(item.kind))) && !item.approvedBy && !legacyWalletOpening) invalid(`${path}.aprobación independiente`);
     });
     const state = root as unknown as State;
@@ -199,13 +202,35 @@ export function decodeDemoState(raw: string): ReturnType<typeof inspectDemoState
   catch { return { ok:false,error:'La copia guardada no contiene JSON válido.' }; }
 }
 
+export interface LocalStateStorage {
+  getItem(key:string):string|null;
+  setItem(key:string,value:string):void;
+}
+
+/** Initialize only the new local workspace; never inspect or migrate legacy demo data. */
+export function initializeLocalStateStorage(storage:LocalStateStorage):State {
+  const existing = storage.getItem(LOCAL_STORAGE_KEY);
+  if (existing !== null) {
+    const result = decodeDemoState(existing);
+    if (!result.ok) throw new Error(result.error);
+    if (result.state.organization.id !== 'local-trefil-electric') invalid('organization.local');
+    return result.state;
+  }
+  const state = createEmptyState();
+  const result = inspectDemoState(state);
+  if (!result.ok) throw new Error(result.error);
+  if (state.organization.id !== 'local-trefil-electric') invalid('organization.local');
+  storage.setItem(LOCAL_STORAGE_KEY,JSON.stringify(state));
+  return state;
+}
+
 export interface DemoLockManager {
   request(name:string,options:{ifAvailable:true},callback:(lock:object|null)=>Promise<void>):Promise<unknown>;
 }
 export type DemoReadOnlyReason = 'unsupported' | 'busy' | 'unavailable';
 
 /** Cooperative single writer; readers never queue, steal a lock or write an audit. */
-export function holdDemoWriterLease(manager:DemoLockManager|undefined,callbacks:{onWriter:()=>void;onReadOnly:(reason:DemoReadOnlyReason)=>void}) {
+export function holdDemoWriterLease(manager:DemoLockManager|undefined,callbacks:{onWriter:()=>void;onReadOnly:(reason:DemoReadOnlyReason)=>void},lockName=DEMO_WRITER_LOCK) {
   let released = false;
   let releaseHold:()=>void = ()=>{};
   const held = new Promise<void>(resolve => { releaseHold = resolve; });
@@ -214,7 +239,7 @@ export function holdDemoWriterLease(manager:DemoLockManager|undefined,callbacks:
   const done = Promise.resolve().then(async() => {
     if (released) return;
     if (!manager) { callbacks.onReadOnly('unsupported'); return; }
-    await manager.request(DEMO_WRITER_LOCK,{ifAvailable:true},async lock => {
+    await manager.request(lockName,{ifAvailable:true},async lock => {
       if (released) return;
       if (!lock) { callbacks.onReadOnly('busy'); return; }
       callbacks.onWriter();
