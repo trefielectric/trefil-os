@@ -23,36 +23,16 @@ jobs:
       run:
         shell: bash
     env:
-      TREFIL_BACKUP_OUTPUT: ${{ runner.temp }}/trefil-encrypted
-      TREFIL_BACKUP_RETENTION_DAYS: '30'
-      TREFIL_BACKUP_KEY: ${{ secrets.TREFIL_BACKUP_KEY }}
-      TREFIL_BACKUP_ORGANIZATION_ID: ${{ vars.TREFIL_BACKUP_ORGANIZATION_ID }}
-      TREFIL_BACKUP_PGHOST: ${{ secrets.TREFIL_BACKUP_PGHOST }}
-      TREFIL_BACKUP_PGPORT: ${{ secrets.TREFIL_BACKUP_PGPORT }}
-      TREFIL_BACKUP_PGDATABASE: ${{ secrets.TREFIL_BACKUP_PGDATABASE }}
-      TREFIL_BACKUP_PGUSER: ${{ secrets.TREFIL_BACKUP_PGUSER }}
-      TREFIL_BACKUP_PGPASSWORD: ${{ secrets.TREFIL_BACKUP_PGPASSWORD }}
-      TREFIL_BACKUP_PGSSLMODE: verify-full
-      TREFIL_BACKUP_PGSSLROOTCERT: ${{ secrets.TREFIL_BACKUP_PGSSLROOTCERT }}
-      TREFIL_RECORD_PGHOST: ${{ secrets.TREFIL_RECORD_PGHOST }}
-      TREFIL_RECORD_PGPORT: ${{ secrets.TREFIL_RECORD_PGPORT }}
-      TREFIL_RECORD_PGDATABASE: ${{ secrets.TREFIL_RECORD_PGDATABASE }}
-      TREFIL_RECORD_PGUSER: ${{ secrets.TREFIL_RECORD_PGUSER }}
-      TREFIL_RECORD_PGPASSWORD: ${{ secrets.TREFIL_RECORD_PGPASSWORD }}
-      TREFIL_RECORD_PGSSLMODE: verify-full
-      TREFIL_RECORD_PGSSLROOTCERT: ${{ secrets.TREFIL_RECORD_PGSSLROOTCERT }}
-      TREFIL_SUPABASE_URL: ${{ vars.TREFIL_SUPABASE_URL }}
-      TREFIL_SUPABASE_BACKUP_SECRET: ${{ secrets.TREFIL_SUPABASE_BACKUP_SECRET }}
-      TREFIL_BACKUP_BUCKETS: ${{ vars.TREFIL_BACKUP_BUCKETS }}
       PG_MAJOR: ${{ vars.TREFIL_POSTGRES_CLIENT_MAJOR || '18' }}
     steps:
-      # Official release commits verified against actions/* release pages.
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      # Official latest stable releases verified on 2026-11-10; immutable SHAs.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
+          package-manager-cache: false
       - name: Seleccionar cliente PostgreSQL compatible
         run: |
           set -euo pipefail
@@ -62,9 +42,31 @@ jobs:
       - name: Instalar dependencias bloqueadas
         run: npm ci --ignore-scripts
       - name: Capturar, cifrar y verificar
+        env:
+          TREFIL_BACKUP_OUTPUT: ${{ runner.temp }}/trefil-encrypted
+          TREFIL_BACKUP_RETENTION_DAYS: '30'
+          TREFIL_BACKUP_KEY: ${{ secrets.TREFIL_BACKUP_KEY }}
+          TREFIL_BACKUP_ORGANIZATION_ID: ${{ vars.TREFIL_BACKUP_ORGANIZATION_ID }}
+          TREFIL_BACKUP_PGHOST: ${{ secrets.TREFIL_BACKUP_PGHOST }}
+          TREFIL_BACKUP_PGPORT: ${{ secrets.TREFIL_BACKUP_PGPORT }}
+          TREFIL_BACKUP_PGDATABASE: ${{ secrets.TREFIL_BACKUP_PGDATABASE }}
+          TREFIL_BACKUP_PGUSER: ${{ secrets.TREFIL_BACKUP_PGUSER }}
+          TREFIL_BACKUP_PGPASSWORD: ${{ secrets.TREFIL_BACKUP_PGPASSWORD }}
+          TREFIL_BACKUP_PGSSLMODE: verify-full
+          TREFIL_BACKUP_PGSSLROOTCERT: ${{ secrets.TREFIL_BACKUP_PGSSLROOTCERT }}
+          TREFIL_RECORD_PGHOST: ${{ secrets.TREFIL_RECORD_PGHOST }}
+          TREFIL_RECORD_PGPORT: ${{ secrets.TREFIL_RECORD_PGPORT }}
+          TREFIL_RECORD_PGDATABASE: ${{ secrets.TREFIL_RECORD_PGDATABASE }}
+          TREFIL_RECORD_PGUSER: ${{ secrets.TREFIL_RECORD_PGUSER }}
+          TREFIL_RECORD_PGPASSWORD: ${{ secrets.TREFIL_RECORD_PGPASSWORD }}
+          TREFIL_RECORD_PGSSLMODE: verify-full
+          TREFIL_RECORD_PGSSLROOTCERT: ${{ secrets.TREFIL_RECORD_PGSSLROOTCERT }}
+          TREFIL_SUPABASE_URL: ${{ vars.TREFIL_SUPABASE_URL }}
+          TREFIL_SUPABASE_BACKUP_SECRET: ${{ secrets.TREFIL_SUPABASE_BACKUP_SECRET }}
+          TREFIL_BACKUP_BUCKETS: ${{ vars.TREFIL_BACKUP_BUCKETS }}
         run: node scripts/backup/cli.mjs backup
       - name: Conservar únicamente el respaldo cifrado y su recibo
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: trefil-copia-cifrada-${{ github.run_id }}
           path: ${{ runner.temp }}/trefil-encrypted/
