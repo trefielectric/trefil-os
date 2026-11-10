@@ -1,3 +1,4 @@
+import { getInventoryAlerts } from '../inventory/engine';
 import { buildAmortization, validateDate } from './amortization';
 import { add, fromCents, money, rateFraction, sub, toCents } from './money';
 import type { Account, Actor, Alert, AuditEvent, Debt, DebtPaymentInput, Entry, Money, Reconciliation, State, Summary, Transaction, TransactionInput, UpcomingObligation } from './types';
@@ -116,6 +117,7 @@ export function approveTransaction(state: State, transactionId: string, actor: A
   if (original.requestedBy === actor.id) throw new Error('La aprobación requiere otra persona autorizada.');
   if (!isBalanced(original)) throw new Error('No se puede aprobar un movimiento desequilibrado.');
   if(isCashEnabled(state)&&original.reversalOf)throw new Error('La corrección requiere autorización institucional; una aprobación local no aplica el reverso.');
+  for(const payment of state.debtPayments.filter(row=>row.transactionId===transactionId)){if(toCents(payment.principal)>toCents(getDebtBalance(state,payment.debtId)))throw new Error('El saldo de la obligación cambió; revisa el pago antes de aprobar.');}
   const cashSessionIds=assertCashPostingAllowed(state,{date:original.date,accountIds:original.entries.map(row=>row.accountId),sessionIds:original.cashSessionIds});
   const next = copy(state);
   const transaction = next.transactions.find(row => row.id === transactionId)!;
@@ -170,10 +172,15 @@ export function getEffectiveDebtPayments(state: State, debtId?: string) {
   return state.debtPayments.filter(payment => (!debtId || payment.debtId === debtId) && payment.status === 'posted' && state.transactions.some(transaction => transaction.id === payment.transactionId && transaction.status === 'posted' && !transaction.reversedBy));
 }
 
+/** Supplier compensation settles principal without a cash journal entry. */
+export function getSupplierOffsets(state: State, debtId?: string) {
+  return (state.inventory?.supplierOffsets ?? []).filter(row => (!debtId || row.debtId === debtId) && state.debts.some(debt => debt.id === row.debtId && debt.kind === 'supplier'));
+}
+
 export function getDebtBalance(state: State, debtId: string): Money {
   const debt = state.debts.find(item => item.id === debtId);
   if (!debt) throw new Error('La obligación no existe.');
-  return sub(debt.principal, add(...getEffectiveDebtPayments(state, debtId).map(payment => payment.principal)));
+  return sub(debt.principal, add(...getEffectiveDebtPayments(state, debtId).map(payment => payment.principal), ...getSupplierOffsets(state, debtId).map(row => row.amount))); 
 }
 
 export function recordDebtPayment(state: State, input: DebtPaymentInput, actor: Actor): State {
@@ -252,9 +259,16 @@ export function createAccount(state: State, input: Omit<Account, 'id' | 'created
 
 export function createDebt(state: State, input: Omit<Debt, 'id' | 'createdAt' | 'status'>, actor: Actor): State {
   authorize(state, actor, FINANCE_ROLES, input.locationId); requireLocation(state, input.locationId);
-  if (!['loan', 'investment'].includes(input.kind)) throw new Error('Tipo de obligación inválido.');
+  if (!['loan', 'investment', 'supplier'].includes(input.kind)) throw new Error('Tipo de obligación inválido.');
   requireText(input.creditor, 'El acreedor'); buildAmortization(input); validateSupport(input.contract);
   if (input.startDate > todayBogota()) throw new Error('Una obligación desembolsada no puede tener fecha futura. Usa el simulador para condiciones proyectadas.');
+  if(input.kind==='supplier'){
+    requireText(input.supplierInvoice??'', 'La factura del proveedor'); validateDate(input.supplierDueDate??'');
+    if(!input.contract?.dataUrl)throw new Error('Adjunta la factura real del proveedor.');validateCashSupport(input.contract);
+    if(input.supplierDueDate!<input.startDate)throw new Error('El vencimiento del proveedor no puede ser anterior a la factura.');
+    if(toCents(money(input.monthlyRate))!==0n||input.installments!==1||input.graceMonths||input.extraPayments?.length||input.rateChanges?.length)throw new Error('La obligación de proveedor se registra por su factura y vencimiento, sin intereses ni cuotas ficticias.');
+    if(state.debts.some(row=>row.kind==='supplier'&&row.creditor.trim().toLocaleLowerCase('es')===input.creditor.trim().toLocaleLowerCase('es')&&row.supplierInvoice===input.supplierInvoice?.trim()))throw new Error('La factura del proveedor ya existe.');
+  }
   const next = copy(state);
   const debt: Debt = { ...input, principal: money(input.principal), id: uid(), status: 'active', createdAt: now() };
   next.debts.push(debt);
@@ -343,6 +357,10 @@ export function deriveAlerts(state: State, today = todayBogota()): Alert[] {
   if (!lastVerified || cutoff - Date.parse(lastVerified.completedAt!) > 86400000) push('backup-stale', 'backup_stale', 'Respaldo verificado pendiente', 'Han pasado más de 24 horas sin un respaldo verificado, o todavía no existe uno.', 'critical', 'Administrador general', lastVerified ? `Último verificado: ${lastVerified.completedAt}` : 'No hay respaldos empresariales verificados.');
   if (!backups.some(run => run.status === 'success' && run.restoreVerifiedAt)) push('restore-unverified', 'restore_unverified', 'Restauración no verificada', 'Falta una prueba de recuperación en un ambiente aislado.', 'warning', 'Administrador general', 'Una copia no equivale a una restauración comprobada.');
   if(isCashEnabled(state))for(const alert of getCashAlerts(state,today))if(!results.some(row=>row.id===alert.id))results.push(alert);
+  if(state.inventory)for(const row of getInventoryAlerts(state,today)){
+    if(results.some(alert=>alert.id===row.id))continue;
+    results.push({id:row.id,type:row.priority===2?'finished_product_shortage':'inventory_'+row.type,title:row.title,description:row.description,severity:row.severity,responsible:'Inventarios',status:row.status,dueDate:row.date,evidence:row.quantity?`Diferencia documentada: ${row.quantity}`:row.description,comments:[],history:row.history.map(event=>({date:event.date,actorName:state.members.find(member=>member.id===event.actorId)?.name??'Inventarios',action:event.action})),...(row.locationId?{locationId:row.locationId}:{})});
+  }
   const persisted = new Map(state.alerts.map(alert => [alert.id, alert]));
   return results.map(alert => {
     const saved = persisted.get(alert.id);
@@ -385,7 +403,11 @@ export function getUpcomingObligations(state: State, today = todayBogota()): Upc
   for (const debt of state.debts) {
     if (toCents(getDebtBalance(state, debt.id)) <= 0n) continue;
     const payments = getEffectiveDebtPayments(state, debt.id);
-    const paidPrincipal = payments.reduce((sum, payment) => sum + toCents(payment.principal), 0n);
+    if(debt.kind==='supplier'){
+      const date=debt.supplierDueDate!;const principal=getDebtBalance(state,debt.id);const days=dateDistance(today,date);
+      results.push({debtId:debt.id,creditor:debt.creditor,period:1,date,amount:principal,principal,interest:'0.00',status:days<0?'overdue':days<=7?'upcoming':'future',projected:true});continue;
+    }
+    const paidPrincipal = payments.reduce((sum, payment) => sum + toCents(payment.principal), 0n) + getSupplierOffsets(state,debt.id).reduce((sum,row)=>sum+toCents(row.amount),0n);
     const paidInterest = payments.reduce((sum, payment) => sum + toCents(payment.interest), 0n);
     let expectedPrincipal = 0n;
     let expectedInterest = 0n;
