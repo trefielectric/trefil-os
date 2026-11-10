@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createDemoState, createTransaction, DEMO_ACTORS, approveTransaction, reverseTransaction, recordDebtPayment, commentAlert, type State } from '../src/lib/finance';
-import { decodeDemoState, inspectDemoState, holdDemoWriterLease, DEMO_WRITER_LOCK, type DemoLockManager } from '../src/lib/demo-state';
+import { createDemoState, createTransaction, createAccount, getSummary, DEMO_ACTORS, approveTransaction, reverseTransaction, recordDebtPayment, commentAlert, type State } from '../src/lib/finance';
+import { createEmptyState } from '../src/lib/finance/empty';
+import { decodeDemoState, inspectDemoState, holdDemoWriterLease, initializeLocalStateStorage, DEMO_STORAGE_KEY, DEMO_WRITER_LOCK, LOCAL_STORAGE_KEY, LOCAL_WRITER_LOCK, type DemoLockManager, type LocalStateStorage } from '../src/lib/demo-state';
 
 const expense = (state:State) => state.transactions.find(row=>row.kind==='expense'&&row.status==='posted')!;
 const rejected = (change:(state:State)=>void) => { const state=createDemoState();change(state);assert.equal(inspectDemoState(state).ok,false); };
@@ -155,4 +156,105 @@ test('missing or rejected Web Locks leaves writing disabled rather than simulati
   const rejectedManager:DemoLockManager={request:async()=>{throw new Error('private browser detail');}};
   const unavailable=holdDemoWriterLease(rejectedManager,{onWriter:()=>results.push('unsafe write'),onReadOnly:reason=>results.push(reason)});await unavailable.done;
   assert.deepEqual(results,['unsupported','unavailable']);
+});
+
+class MemoryStorage implements LocalStateStorage {
+  values=new Map<string,string>();
+  reads:string[]=[];
+  writes:{key:string;value:string}[]=[];
+  getItem(key:string):string|null {this.reads.push(key);return this.values.get(key)??null;}
+  setItem(key:string,value:string):void {this.writes.push({key,value});this.values.set(key,value);}
+}
+
+function recordedLocalState():State {
+  let state=createEmptyState();const actor=state.members[0];
+  state=createAccount(state,{name:'Caja local propia',kind:'cash',custodian:'Propietario local',locationId:'sede-principal',active:true},actor);
+  const account=state.accounts.find(row=>row.kind==='cash')!;
+  return createTransaction(state,{kind:'income',date:'2026-11-10',description:'Ingreso local registrado por el propietario',party:'Tercero local',category:'Ingreso',locationId:'sede-principal',amount:'123.45',accountId:account.id,idempotencyKey:'local-storage-preservation-0001'},actor);
+}
+
+test('new local workspace initializes with zero financial records and no fabricated activity',()=>{
+  const storage=new MemoryStorage();const state=initializeLocalStateStorage(storage);
+  assert.equal(state.organization.id,'local-trefil-electric');assert.equal(state.organization.name,'Trefil Electric');
+  assert.deepEqual(state.locations,[{id:'sede-principal',name:'Sede principal'}]);
+  assert.equal(state.members.length,1);assert.equal(state.members[0].id,'local-owner');
+  for(const name of ['accounts','transactions','debts','debtPayments','reconciliations','alerts','audit','backups'] as const)assert.deepEqual(state[name],[],name);
+  const summary=getSummary(state,'2026-11-10');
+  for(const name of ['available','income','expenses','debt','interestPaid','principalPaid'] as const)assert.equal(summary[name],'0.00',name);
+  assert.equal(summary.pendingApprovals,0);
+  assert.equal(inspectDemoState(state).ok,true);assert.equal(decodeDemoState(JSON.stringify(state)).ok,true);
+  assert.deepEqual(storage.reads,[LOCAL_STORAGE_KEY]);assert.equal(storage.writes.length,1);
+  assert.equal(storage.writes[0].key,LOCAL_STORAGE_KEY);assert.deepEqual(JSON.parse(storage.writes[0].value),state);
+});
+
+test('initialization neither reads nor alters the old demonstration, even when legacy data exists',()=>{
+  const storage=new MemoryStorage();const legacy=JSON.stringify(createDemoState());
+  storage.values.set(DEMO_STORAGE_KEY,legacy);storage.values.set('unrelated-preserved-key','unchanged');
+  const state=initializeLocalStateStorage(storage);
+  assert.deepEqual(state,createEmptyState());assert.equal(storage.values.get(DEMO_STORAGE_KEY),legacy);
+  assert.equal(storage.values.get('unrelated-preserved-key'),'unchanged');
+  assert.deepEqual(storage.reads,[LOCAL_STORAGE_KEY]);assert.deepEqual(storage.writes.map(row=>row.key),[LOCAL_STORAGE_KEY]);
+  assert.equal(decodeDemoState(legacy).ok,true,'Legacy validator compatibility is preserved without migration');
+});
+
+test('preexisting local operations are returned without rewriting, resetting or inventing audit events',()=>{
+  const storage=new MemoryStorage();const state=recordedLocalState();const raw=JSON.stringify(state);
+  storage.values.set(LOCAL_STORAGE_KEY,raw);storage.values.set(DEMO_STORAGE_KEY,'MALFORMED_LEGACY_MUST_NOT_BE_READ');
+  const restored=initializeLocalStateStorage(storage);
+  assert.deepEqual(restored,JSON.parse(raw));assert.equal(getSummary(restored,'2026-11-10').available,'123.45');
+  assert.equal(storage.values.get(LOCAL_STORAGE_KEY),raw);assert.equal(storage.writes.length,0);
+  assert.deepEqual(storage.reads,[LOCAL_STORAGE_KEY]);assert.equal(storage.values.get(DEMO_STORAGE_KEY),'MALFORMED_LEGACY_MUST_NOT_BE_READ');
+});
+
+test('a second initialization reuses the saved empty workspace and performs no extra write',()=>{
+  const storage=new MemoryStorage();const first=initializeLocalStateStorage(storage);const second=initializeLocalStateStorage(storage);
+  assert.deepEqual(second,first);assert.equal(storage.writes.length,1);assert.deepEqual(second.audit,[]);
+});
+
+test('malformed, foreign, legacy-in-local and financially invalid local snapshots remain untouched',()=>{
+  const wrongOrganization=createEmptyState();wrongOrganization.organization.id='foreign-company';
+  const invalidFinancial=recordedLocalState();invalidFinancial.transactions[0].entries[0].debit='NaN';
+  const incomplete={...createEmptyState(),accounts:undefined};
+  for(const raw of ['{"PRIVATE_MALFORMED_VALUE":',JSON.stringify(wrongOrganization),JSON.stringify(createDemoState()),JSON.stringify(invalidFinancial),JSON.stringify(incomplete)]){
+    const storage=new MemoryStorage();const legacy=JSON.stringify(createDemoState());
+    storage.values.set(LOCAL_STORAGE_KEY,raw);storage.values.set(DEMO_STORAGE_KEY,legacy);
+    assert.throws(()=>initializeLocalStateStorage(storage),error=>error instanceof Error&&!error.message.includes('PRIVATE_MALFORMED_VALUE'));
+    assert.equal(storage.values.get(LOCAL_STORAGE_KEY),raw);assert.equal(storage.values.get(DEMO_STORAGE_KEY),legacy);
+    assert.equal(storage.writes.length,0);assert.deepEqual(storage.reads,[LOCAL_STORAGE_KEY]);
+  }
+});
+
+test('local states receive the same deep money validation and never inherit legacy approval exceptions',()=>{
+  const state=recordedLocalState();assert.equal(inspectDemoState(state).ok,true);
+  state.transactions[0].amount='1e2';assert.equal(inspectDemoState(state).ok,false);
+  const legacy=createDemoState();delete legacy.transactions.find(row=>row.id==='demo-tx-4')!.approvedBy;
+  assert.equal(inspectDemoState(legacy).ok,true);
+  legacy.organization.id='local-trefil-electric';assert.equal(inspectDemoState(legacy).ok,false);
+});
+
+test('storage failures propagate without pretending an empty state was saved or falling back to legacy',()=>{
+  const readFailure=new Error('Storage is unavailable');let writes=0;
+  assert.throws(()=>initializeLocalStateStorage({getItem:()=>{throw readFailure;},setItem:()=>{writes++;}}),error=>error===readFailure);
+  assert.equal(writes,0);
+  const storage=new MemoryStorage();const legacy=JSON.stringify(createDemoState());storage.values.set(DEMO_STORAGE_KEY,legacy);
+  const writeFailure=new Error('Storage quota exceeded');
+  assert.throws(()=>initializeLocalStateStorage({getItem:key=>storage.getItem(key),setItem:()=>{throw writeFailure;}}),error=>error===writeFailure);
+  assert.equal(storage.values.has(LOCAL_STORAGE_KEY),false);assert.equal(storage.values.get(DEMO_STORAGE_KEY),legacy);
+  assert.deepEqual(storage.reads,[LOCAL_STORAGE_KEY]);
+});
+
+test('local writer lock is distinct from legacy and still prevents another local writer',async()=>{
+  const held=new Set<string>();const calls:string[]=[];const events:string[]=[];
+  const manager:DemoLockManager={request:async(name,_options,callback)=>{
+    calls.push(name);if(held.has(name))return callback(null);held.add(name);
+    try{return await callback({name});}finally{held.delete(name);}
+  }};
+  const legacy=holdDemoWriterLease(manager,{onWriter:()=>events.push('legacy writer'),onReadOnly:reason=>events.push('legacy '+reason)});
+  const local=holdDemoWriterLease(manager,{onWriter:()=>events.push('local writer'),onReadOnly:reason=>events.push('local '+reason)},LOCAL_WRITER_LOCK);
+  const secondLocal=holdDemoWriterLease(manager,{onWriter:()=>events.push('unexpected local writer'),onReadOnly:reason=>events.push('second local '+reason)},LOCAL_WRITER_LOCK);
+  try{
+    await flush();assert.deepEqual(events,['legacy writer','local writer','second local busy']);
+    assert.deepEqual(calls,[DEMO_WRITER_LOCK,LOCAL_WRITER_LOCK,LOCAL_WRITER_LOCK]);
+    assert.notEqual(LOCAL_WRITER_LOCK,DEMO_WRITER_LOCK);assert.notEqual(LOCAL_STORAGE_KEY,DEMO_STORAGE_KEY);
+  }finally{legacy.release();local.release();secondLocal.release();await Promise.all([legacy.done,local.done,secondLocal.done]);}
 });
