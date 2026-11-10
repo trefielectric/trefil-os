@@ -1,0 +1,37 @@
+{
+  "name": "trefil-os",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "next dev --hostname 127.0.0.1",
+    "build": "next build --webpack",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test tests/*.test.ts && node --test tests/*.test.mjs",
+    "test:finance": "node --import tsx --test tests/finance.test.ts",
+    "test:database": "node --import tsx --test tests/database.test.ts",
+    "backup": "node scripts/backup/cli.mjs backup",
+    "backup:verify": "node scripts/backup/cli.mjs verify",
+    "backup:restore": "node scripts/backup/cli.mjs restore"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.119.0",
+    "lucide-react": "1.71.0",
+    "next": "16.4.6",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.16",
+    "@tailwindcss/postcss": "4.3.5",
+    "@types/node": "26.6.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "supabase": "3.1.0",
+    "tailwindcss": "4.3.5",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2"
+  }
+}
