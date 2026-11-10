@@ -1,6 +1,12 @@
 # Trefil OS · Trefil Electric
 
-Base modular para el control empresarial exclusivo de Trefil Electric. Esta entrega permite revisar y probar la primera fase financiera con datos ficticios. El libro de demostración se guarda en el navegador; todavía no existe un adaptador financiero que lo conecte a Supabase. No introducir operaciones, documentos ni información empresarial real.
+Base modular para el control empresarial exclusivo de Trefil Electric. El espacio local empieza **limpio y en cero**, sin cuentas, movimientos, obligaciones, pagos, conciliaciones, documentos ni auditoría de ejemplo. Conserva el logo institucional original azul y amarillo. Todavía no existe un adaptador financiero que conecte este libro local a Supabase; no introducir información empresarial real hasta verificar esa conexión, los permisos y el respaldo.
+
+## Inicio limpio
+
+`createEmptyState` inicializa solamente Trefil Electric, una sede principal y un perfil técnico `local-owner`. Ese perfil identifica cambios en el navegador: **no representa una cuenta autenticada ni un propietario aprovisionado en Supabase**. Los formularios no precargan acreedores, cuentas, importes, tasas o cuotas ficticias.
+
+El espacio nuevo utiliza `trefil-os:local:v1` y un bloqueo de escritura independiente. Los datos del escenario anterior, bajo `trefil-os:demo:v1`, se conservan sin cargarse, migrarse ni mezclarse con el libro nuevo. Este cambio no borra ni modifica recursos remotos. Los fixtures con COP 128.000.000 siguen disponibles exclusivamente para las pruebas automatizadas; no se usan como estado inicial de la aplicación.
 
 ## Ejecutar y verificar
 
@@ -11,7 +17,7 @@ npm ci
 npm run dev
 ```
 
-Abrir [la aplicación local](http://127.0.0.1:3000). La ruta `/` contiene la demostración financiera; `/acceso/` contiene el acceso institucional separado. Para comprobar el código:
+Abrir [la aplicación local](http://127.0.0.1:3000). La ruta `/` contiene el espacio financiero local vacío; `/acceso/` contiene el acceso institucional separado. Para comprobar el código:
 
 ```sh
 npm run typecheck
@@ -19,7 +25,7 @@ npm test
 npm run build
 ```
 
-La compilación produce `out/` mediante la exportación estática de Next.js App Router. `npm run dev` sirve la versión de desarrollo; `next start` no sirve esta exportación. No se necesita ninguna credencial institucional para ejecutar las pruebas o la demostración. El CI ejecuta esos mismos controles sin secretos, migraciones remotas ni despliegues.
+La compilación produce `out/` mediante la exportación estática de Next.js App Router. `npm run dev` sirve la versión de desarrollo; `next start` no sirve esta exportación. No se necesita ninguna credencial institucional para ejecutar las pruebas o abrir el espacio local. El CI ejecuta esos mismos controles sin secretos, migraciones remotas ni despliegues. El resultado final de las verificaciones del inicio limpio se registra en [Verificación](docs/verification.md); los resultados del escenario anterior son evidencia histórica.
 
 ## Primera fase disponible para revisión
 
@@ -28,10 +34,10 @@ La compilación produce `out/` mediante la exportación estática de Next.js App
 - Ingresos, gastos, traslados, anticipos, reembolsos, salarios, préstamos recibidos, gastos personales, ajustes y reversos equilibrados.
 - Aprobación independiente desde COP 5.000.000 y para toda apertura, ajuste, gasto personal, pago de deuda y reverso. Los pendientes nunca cambian saldos.
 - Obligaciones, distribución real de pagos entre capital e interés, tabla de amortización y simulador con gracia a capital, cambios de tasa y abonos extraordinarios.
-- Conciliaciones, evidencias ficticias, alertas con seguimiento y auditoría de operaciones y accesos de demostración.
+- Conciliaciones, soportes, alertas con seguimiento y auditoría de las operaciones registradas; sin historial ficticio precargado.
 - Migraciones PostgreSQL con RLS, RPC validadas, políticas para soportes privados y herramientas de respaldo cifrado y restauración aislada.
 
-El escenario está fechado al 10 de noviembre de 2026. Las personas, cuentas, importes y soportes de ejemplo son ficticios. El selector de perfil prueba las reglas de interfaz y los reductores; cualquier persona con acceso al navegador puede cambiarlo. **No es autenticación empresarial**. El almacenamiento local puede editarse o borrarse y no equivale a una base auditable ni a un respaldo empresarial.
+Los indicadores financieros arrancan en cero y las listas sin registros. La ausencia de un respaldo o de conexión institucional puede seguir generando avisos legítimos de configuración pendiente; no se inventan ejecuciones verificadas para ocultarlos. El almacenamiento local puede editarse o borrarse y no equivale a una base auditable ni a un respaldo empresarial. La autorización y aprobación empresarial requieren usuarios personales, sesiones y controles del backend verificados.
 
 Los importes se transportan como cadenas decimales y se calculan con centavos `BigInt`; PostgreSQL usa `numeric(18,2)`. Las tasas del simulador son porcentajes **mensuales vencidos**, con redondeo a centavos por período. El plan contractual y las proyecciones no representan pagos realizados ni una liquidación diaria del acreedor. Los anticipos y préstamos recibidos se distinguen de los ingresos y gastos operativos; el flujo de caja sí refleja sus entradas o salidas efectivas.
 
@@ -48,11 +54,13 @@ La existencia de estos recursos no demuestra que Auth, RLS, Storage, el libro, r
 
 ## Acceso institucional
 
-`/acceso/` usa Supabase Auth para inicio, recuperación, TOTP MFA y comprobación de membresía. Sin configuración pública válida mantiene los controles deshabilitados. Una identidad comprobada permanece en su pantalla separada; no obtiene una sesión financiera ni convierte la demostración en información real.
+`/acceso/` usa Supabase Auth para inicio, recuperación, TOTP MFA y comprobación de membresía. Sin configuración pública válida mantiene los controles deshabilitados. Una identidad comprobada permanece en su pantalla separada; no obtiene una sesión financiera ni convierte los registros del navegador en información institucional.
 
 La configuración prevista utiliza únicamente `NEXT_PUBLIC_SUPABASE_URL` y `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, introducidas directamente en el administrador del entorno autorizado. Se incorporan al build estático y requieren recompilar al cambiarlas. Nunca usar una clave `service_role`, `sb_secret_`, una contraseña PostgreSQL o una llave de respaldo en variables del navegador. El procedimiento y las pruebas reales pendientes se detallan en [Acceso y doble factor](docs/auth-setup.md).
 
 ## Preview y producción
+
+El proyecto Vercel `administrativo914/trefil-os` está preparado con Next.js, raíz de repositorio vacía (el `package.json` remoto está en la raíz), Node `24.x`, instalación `npm ci`, build `npm run build` y salida `out`. `engines.node` fija la misma versión mayor que CI. La autenticación de Vercel está activada para **All Deployments**, sin enlaces de bypass, para mantener privada la revisión. La conexión Git del repositorio privado de organización requiere Pro; no se ha contratado ni publicado un despliegue. Cambiar el origen de localhost a Vercel crea un almacenamiento local separado y no sincroniza registros ni los conecta a PostgreSQL.
 
 `vercel.json` deshabilita los despliegues Git de `main` y habilita la rama `codex/finance-preview`. La condición `ignoreCommand` ejecuta `scripts/vercel-build-gate.mjs`: un entorno `preview` retorna **1**, que permite construir; `production`, un entorno desconocido o una variable ausente retornan **0**, que omite el build según la convención de Vercel. Estos códigos no son los de una prueba convencional. [Referencia de Vercel](https://vercel.com/docs/project-configuration/vercel-json#ignorecommand).
 
@@ -73,4 +81,4 @@ Las herramientas manuales están disponibles mediante `npm run backup`, `npm run
 - [Respaldo, retención y recuperación](docs/recovery.md)
 - [Estado de implementación](docs/implementation-status.md)
 
-No se han conectado Microsoft Graph, Outlook, OneDrive ni Google Drive. La importación de documentos históricos requiere identificar su propietario y autorización específica. El repositorio contiene código y ejemplos ficticios; los secretos, respaldos y registros reales permanecen fuera de él.
+No se han conectado Microsoft Graph, Outlook, OneDrive ni Google Drive. La importación de documentos históricos requiere identificar su propietario y autorización específica. El repositorio contiene código y fixtures ficticios de pruebas; los secretos, respaldos y registros reales permanecen fuera de él.
