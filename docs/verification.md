@@ -65,3 +65,16 @@ La función del proveedor devuelve `event_trigger` y usa `search_path=pg_catalog
 ## Pendientes que impiden habilitar dinero real
 
 Adaptador financiero por RPC; usuarios personales y propietario verificado en Auth; pruebas HTTP de MFA, RLS y Storage; alta de deudas idempotente y límites UI/SQL unificados; respaldo diario real, restauración aislada y copia externa verificadas. Vercel rechazó enlazar el repositorio privado de organización en Hobby; requiere resolver el plan con aprobación del propietario. No se compró un plan ni se desplegó producción.
+
+
+## Inventarios · Validación integrada del 10 de noviembre de 2026
+
+La versión candidata del Módulo 02 aprobó `npm run typecheck`, `npm test` y `npm run build`: **183 pruebas** (168 TypeScript y 15 JavaScript), sin fallos. Incluye 22 pruebas nuevas del dominio, 6 de integración financiera, 8 contratos de interfaz y 6 de exportación. Las pruebas anteriores de Caja, finanzas, almacenamiento, seguridad de SQL y respaldo permanecen aprobadas.
+
+La prueba de navegador se ejecutó en un origen local aislado del Preview. Se creó una referencia sintética de producto terminado, se selló un ORIGEN de 2 unidades en Bodega Principal y 0 en Despachos, y se registró un acta física de 1 y 0. La pantalla conservó teórico 2, físico 1 y diferencia -1, junto a la alerta crítica de prioridad 2. Tras recargar, el ORIGEN, las cantidades y el acta permanecieron guardados y superaron la validación de la copia. No se realizó ajuste automático.
+
+El navegador descargó PDF y XLSX con la misma identidad del informe y diferencia; no se detectaron avisos ni errores de consola. El PDF de QA de cuatro páginas se revisó completo; el Excel preservó valores ausentes, fórmulas y referencias documentales. La vista de escritorio no mostró desbordamiento del documento. Los registros sintéticos se limitaron al origen y artefactos de prueba; no se importaron al Preview ni al espacio institucional.
+
+Las pruebas financieras comprobaron recepción de compra sin otro egreso, cobros parciales sin duplicar ingreso, límites de asignación, coincidencia de tercero/sede, períodos cerrados, facturas de proveedor con evidencia/vencimiento y compensación de chatarra sin efectivo, respetando capital reservado por pagos pendientes. Las pruebas del dominio verificaron ORIGEN previo, conservación de stock por bodega, activos individuales, lotes discrepantes, cuarentena, reconocimiento de pesos y cierres inmutables.
+
+La publicación se prepara en `codex/inventory-module`, con despliegues automáticos de esa rama desactivados. La integración final se dirige a `codex/finance-preview`; `main` y producción permanecen deshabilitados. El estado Ready y la comprobación del Preview deben verificarse después de la integración. Esta evidencia corresponde al módulo local: no certifica autenticación multiusuario, stock remoto en Supabase ni operación institucional.
