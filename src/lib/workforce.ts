@@ -18,7 +18,8 @@ export interface Person {
 }
 
 export interface DirectoryPerson extends Person {
-  email: string | null;
+  identifier_hash: string | null;
+  identifier_last_four: string | null;
   supervisor_id: string | null;
   active: boolean;
   registered: boolean;
@@ -60,6 +61,40 @@ export class WorkforceError extends Error {
   }
 }
 
+const identityDomain = "identidad.trefielectric.internal";
+
+export async function documentIdentity(documentNumber: string) {
+  const normalized = documentNumber.replace(/[.\s-]/g, "");
+  if (!/^\d{5,12}$/.test(normalized))
+    throw new WorkforceError("Introduce un número de cédula válido.");
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(`trefielectric:cedula:v1:${normalized}`),
+  );
+  const hash = Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+  return {
+    hash,
+    lastFour: normalized.slice(-4),
+    authEmail: `${hash}@${identityDomain}`,
+  };
+}
+
+export async function signInWithDocument(
+  client: SupabaseClient,
+  documentNumber: string,
+  password: string,
+) {
+  const identity = await documentIdentity(documentNumber);
+  const { error } = await client.auth.signInWithPassword({
+    email: identity.authEmail,
+    password,
+  });
+  if (error)
+    throw new WorkforceError("La cédula o la contraseña no son correctas.");
+}
+
 export async function workforceRpc<T>(
   client: SupabaseClient,
   name: string,
@@ -69,7 +104,7 @@ export async function workforceRpc<T>(
   if (error) {
     const message =
       error.code === "23505"
-        ? "Ya existe una persona con ese correo."
+        ? "Ya existe una persona con esa cédula."
         : error.code === "23514" || error.code === "23502"
           ? "Revisa los datos obligatorios del formulario."
           : error.code === "22023" ||
