@@ -6,8 +6,38 @@ export const accessRoles = {
   admin: "Administrador",
 } as const;
 
-export type AccessRole = keyof typeof accessRoles;
+export type AccessRole = string;
+export type PermissionCode =
+  | "attendance_view_own"
+  | "attendance_mark"
+  | "tasks_view_own"
+  | "tasks_update_own"
+  | "team_view"
+  | "attendance_view_team"
+  | "tasks_view_team"
+  | "tasks_assign"
+  | "tasks_cancel"
+  | "people_manage"
+  | "access_manage"
+  | "roles_manage";
 export type TaskStatus = "pending" | "in_progress" | "done" | "cancelled";
+
+export interface RoleDefinition {
+  code: string;
+  name: string;
+  description: string;
+  system: boolean;
+  active: boolean;
+  permissions: PermissionCode[];
+}
+
+export interface PermissionDefinition {
+  code: PermissionCode;
+  name: string;
+  description: string;
+  category: "personal" | "team" | "administration";
+  sort_order: number;
+}
 
 export interface Person {
   id: string;
@@ -43,6 +73,7 @@ export interface DailyTask {
 
 export interface WorkforceDay {
   me: Person;
+  capabilities: PermissionCode[];
   can_manage: boolean;
   day: string;
   today: string;
@@ -50,6 +81,20 @@ export interface WorkforceDay {
   people: DirectoryPerson[];
   shifts: Shift[];
   tasks: DailyTask[];
+  roles: RoleDefinition[];
+  permissions: PermissionDefinition[];
+}
+
+export function roleLabel(roles: RoleDefinition[], code: string) {
+  return roles.find((role) => role.code === code)?.name ??
+    accessRoles[code as keyof typeof accessRoles] ?? code;
+}
+
+export function hasCapability(
+  snapshot: Pick<WorkforceDay, "capabilities">,
+  capability: PermissionCode,
+) {
+  return snapshot.capabilities.includes(capability);
 }
 
 export class WorkforceError extends Error {
