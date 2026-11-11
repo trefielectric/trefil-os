@@ -1,7 +1,7 @@
 'use client';
 import { getDebtCalendar, getRecurringBillBalance, getDebtModuleState } from '@/lib/debts/engine';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Package, LayoutDashboard, ArrowRightLeft, Wallet, Landmark, CheckCheck, ShieldCheck, Bell, Activity, Settings, Search, ChevronDown, ChevronRight, Plus, Download, ArrowUpRight, ArrowDownLeft, ArrowRight, Building2, Menu, X, HardDrive, Check, LockKeyhole, Users } from 'lucide-react';
+import { Package, LayoutDashboard, ArrowRightLeft, Wallet, Landmark, CheckCheck, ShieldCheck, Bell, Activity, Settings, Search, ChevronDown, ChevronRight, Plus, Download, ArrowUpRight, ArrowDownLeft, ArrowRight, Building2, Menu, X, HardDrive, Check, LockKeyhole, Users, ShoppingCart } from 'lucide-react';
 import { createEmptyState, formatCOP, getAccountBalance, getDebtBalance, deriveAlerts, toCents, fromCents, add } from '@/lib/finance';
 import type { State, Actor, Transaction } from '@/lib/finance';
 import { LOCAL_STORAGE_KEY, LOCAL_WRITER_LOCK, initializeLocalStateStorage, decodeDemoState, inspectDemoState, holdDemoWriterLease } from '@/lib/demo-state';
@@ -16,6 +16,7 @@ import { InventoryView } from './inventory-view';
 import { InventoryCashLinks, InventorySupplierOffsets } from './inventory-integrations-view';
 import { InventoryReportsView } from './inventory-reports-view';
 import { CashModule, type CashModuleTab } from './cash-module';
+import { SalesModule } from './sales-module';
 import { type View, type Mutation, type ViewProps, visibleAccounts, periodTotals, cashSeries, obligations, kindLabels, roleLabels, dateLabel, canWrite, WORKSPACE_DATE as DEMO_DATE } from './view-helpers';
 
 const STORAGE_KEY=LOCAL_STORAGE_KEY;
@@ -28,6 +29,7 @@ const navItems = [
   {id:'transactions',label:'Movimientos',icon:ArrowRightLeft},
   {id:'accounts',label:'Caja y cuentas',icon:Wallet},
   {id:'inventory',label:'Inventarios',icon:Package},
+  {id:'sales',label:'Ventas',icon:ShoppingCart},
   {id:'debts',label:'Deudas',icon:Landmark},
   {id:'reconciliations',label:'Conciliaciones',icon:CheckCheck},
   {id:'approvals',label:'Aprobaciones',icon:ShieldCheck},
@@ -36,6 +38,7 @@ const navItems = [
   {id:'settings',label:'Configuración',icon:Settings},
 ] as const;
 const titles:Record<View,{title:string;subtitle:string}> = {
+  sales:{title:'Cada venta, con su historia.',subtitle:'Clientes, cotizaciones, pedidos, facturación y cartera sin duplicar Caja ni Inventarios.'},
   inventory:{title:'Cada existencia, con su historia.',subtitle:'Cinco inventarios, dos bodegas y una trazabilidad compartida con Caja.'},
   overview:{title:'Tu operación, en perspectiva.',subtitle:'Cada cuenta, cada movimiento. El control empieza aquí.'},
   transactions:{title:'Cada movimiento cuenta.',subtitle:'Registra, consulta y da trazabilidad al dinero de la empresa.'},
@@ -72,7 +75,7 @@ export function FinanceApp() {
   const readOnlyReason=useRef('Esperando el control de escritura del espacio local.');
   const notify=useCallback((message:string)=>{setToast(message);if(timer.current)clearTimeout(timer.current);timer.current=setTimeout(()=>setToast(''),5500);},[]);
   useEffect(()=>{
-    const navigate=()=>{const [section,tab]=window.location.hash.slice(1).split('/');if(section==='caja'){setView('accounts');if(['operations','accounts','statements','reports'].includes(tab))setCashTab(tab as CashModuleTab);}else if(section==='inventarios'){setView('inventory');}else if(section==='deudas'){setView('debts');}else if(navItems.some(item=>item.id===section)){setView(section as View);}};
+    const navigate=()=>{const [section,tab]=window.location.hash.slice(1).split('/');if(section==='caja'){setView('accounts');if(['operations','accounts','statements','reports'].includes(tab))setCashTab(tab as CashModuleTab);}else if(section==='inventarios'){setView('inventory');}else if(section==='ventas'){setView('sales');}else if(section==='deudas'){setView('debts');}else if(navItems.some(item=>item.id===section)){setView(section as View);}};
     navigate();window.addEventListener('hashchange',navigate);return()=>window.removeEventListener('hashchange',navigate);
   },[]);
   useEffect(()=>{
@@ -160,7 +163,7 @@ export function FinanceApp() {
   const openAlerts=alerts.filter(a=>a.status!=='resolved');
   const pending=state.transactions.filter(t=>t.status==='pending');
   const counts:Partial<Record<View,number>>={approvals:pending.length,alerts:openAlerts.length};
-  const go=(id:View)=>{setView(id);setSearch('');setSidebarOpen(false);window.history.replaceState(null,'',id==='accounts'?'#caja/'+cashTab:id==='inventory'?'#inventarios':id==='debts'?'#deudas':'#'+id);};
+  const go=(id:View)=>{setView(id);setSearch('');setSidebarOpen(false);window.history.replaceState(null,'',id==='accounts'?'#caja/'+cashTab:id==='inventory'?'#inventarios':id==='sales'?'#ventas':id==='debts'?'#deudas':'#'+id);};
   const openCash=(tab:CashModuleTab)=>{setCashTab(tab);setView('accounts');setSearch('');setSidebarOpen(false);window.history.replaceState(null,'','#caja/'+tab);};
   const props:ViewProps={state,actor,location,mutate,notify};
   const hasAccounts=visibleAccounts(state,location).some(account=>account.active);
@@ -170,8 +173,8 @@ export function FinanceApp() {
     <aside className={'sidebar '+(sidebarOpen?'sidebar-open':'')}>
       <Brand/><button className="workspace-switch" onClick={()=>go('settings')}><span className="company-icon"><Building2 size={18}/></span><span><strong>Trefil Electric</strong><small>Espacio empresarial</small></span><ChevronDown size={14}/></button>
       <div className="nav-label">ESPACIO DE TRABAJO</div>
-      <nav aria-label="Navegación principal">{navItems.slice(0,7).map(({id,label,icon:Icon})=><button key={id} onClick={()=>go(id)} className={'nav-item '+(view===id?'active':'')} aria-current={view===id?'page':undefined}><Icon size={18}/><span>{label}</span>{Boolean(counts[id])&&<b>{counts[id]}</b>}</button>)}</nav>
-      <div className="nav-label control-label">CONTROL Y GESTIÓN</div><nav aria-label="Control y gestión">{navItems.slice(7).map(({id,label,icon:Icon})=><button key={id} onClick={()=>go(id)} className={'nav-item '+(view===id?'active':'')} aria-current={view===id?'page':undefined}><Icon size={18}/><span>{label}</span>{Boolean(counts[id])&&<b className={id==='alerts'?'alert-count':''}>{counts[id]}</b>}</button>)}<a className="nav-item" href="/equipo/"><Users size={18}/><span>Equipo</span></a></nav>
+      <nav aria-label="Navegación principal">{navItems.slice(0,8).map(({id,label,icon:Icon})=><button key={id} onClick={()=>go(id)} className={'nav-item '+(view===id?'active':'')} aria-current={view===id?'page':undefined}><Icon size={18}/><span>{label}</span>{Boolean(counts[id])&&<b>{counts[id]}</b>}</button>)}</nav>
+      <div className="nav-label control-label">CONTROL Y GESTIÓN</div><nav aria-label="Control y gestión">{navItems.slice(8).map(({id,label,icon:Icon})=><button key={id} onClick={()=>go(id)} className={'nav-item '+(view===id?'active':'')} aria-current={view===id?'page':undefined}><Icon size={18}/><span>{label}</span>{Boolean(counts[id])&&<b className={id==='alerts'?'alert-count':''}>{counts[id]}</b>}</button>)}<a className="nav-item" href="/equipo/"><Users size={18}/><span>Equipo</span></a></nav>
       <div className="sidebar-bottom"><div className="phase-card"><span className="phase-icon">↗</span><strong>Hecho para tu operación.</strong><p>Una base financiera.<br/>Todo un ecosistema por delante.</p><button onClick={()=>go('settings')}>Ver hoja de ruta <ArrowUpRight size={14}/></button></div><button className="backup-sidebar" onClick={()=>go('settings')}><HardDrive size={16}/><span>Respaldo sin verificar</span><i/></button><div className="sidebar-divider"/><button className="profile-button" onClick={()=>setProfileOpen(!profileOpen)} aria-expanded={profileOpen}><span className="avatar">TE</span><span><strong>{roleLabels[actor.role]}</strong><small>Perfil local · Sin autenticar</small></span><ChevronDown size={14}/></button></div>
       {profileOpen&&<div className="profile-menu"><div className="eyebrow">ESPACIO LOCAL</div><p className="local-profile-note">Este perfil identifica cambios en el navegador. El acceso institucional con usuarios personales sigue pendiente.</p><button onClick={()=>{go('settings');setProfileOpen(false);}}><span>Ver configuración</span><Settings size={15}/></button><a className="text-button" href="/acceso/"><LockKeyhole size={15}/> Acceso institucional</a></div>}
 
@@ -181,12 +184,13 @@ export function FinanceApp() {
       <main id="main-content">
         <div className="demo-bar"><span><i/> ESPACIO LOCAL <b>Guardado en este navegador · Conexión institucional pendiente</b></span><button onClick={()=>go('settings')}>Estado de implementación <ArrowRight size={13}/></button></div>
         {error&&<div className="error-banner" role="alert">{error}<button aria-label="Cerrar aviso de almacenamiento" onClick={()=>setError('')}><X size={16}/></button></div>}
-        <section className="page-heading"><div><div className="eyebrow">{view==='inventory'?'OPERACIÓN':'FINANZAS'} <span>/</span> {view==='overview'?'VISTA GENERAL':navItems.find(i=>i.id===view)?.label.toUpperCase()}</div><h1>{titles[view].title.replace(/\.$/,'')}<span className="heading-dot">.</span></h1><p>{titles[view].subtitle}</p></div><div className="heading-buttons">{view!=='inventory'&&view!=='debts'&&<button className="button button-secondary" onClick={exportReport}><Download size={16}/><span>Exportar reporte</span></button>}{canWrite(actor)&&view!=='accounts'&&view!=='inventory'&&view!=='debts'&&<button className="button button-primary" onClick={()=>openCash(hasAccounts?'operations':'accounts')}><Plus size={18}/>{hasAccounts?'Ir a Caja':'Crear primera cuenta'}</button>}</div></section>
+        <section className="page-heading"><div><div className="eyebrow">{view==='inventory'||view==='sales'?'OPERACIÓN':'FINANZAS'} <span>/</span> {view==='overview'?'VISTA GENERAL':navItems.find(i=>i.id===view)?.label.toUpperCase()}</div><h1>{titles[view].title.replace(/\.$/,'')}<span className="heading-dot">.</span></h1><p>{titles[view].subtitle}</p></div><div className="heading-buttons">{view!=='inventory'&&view!=='sales'&&view!=='debts'&&<button className="button button-secondary" onClick={exportReport}><Download size={16}/><span>Exportar reporte</span></button>}{canWrite(actor)&&view!=='accounts'&&view!=='inventory'&&view!=='sales'&&view!=='debts'&&<button className="button button-primary" onClick={()=>openCash(hasAccounts?'operations':'accounts')}><Plus size={18}/>{hasAccounts?'Ir a Caja':'Crear primera cuenta'}</button>}</div></section>
         <div className="context-bar"><div className="context-date"><CalendarIcon/><span>Al <strong>{new Intl.DateTimeFormat('es-CO',{dateStyle:'long',timeZone:'America/Bogota'}).format(new Date(DEMO_DATE+'T12:00:00Z'))}</strong></span><span className="context-dot">·</span><span>COP <span className="muted">/</span> Bogotá</span></div><div className="context-filters"><label><Building2 size={14}/><select aria-label="Filtrar por sede" value={location} onChange={e=>setLocation(e.target.value)}><option value="all">Todas las sedes</option>{state.locations.map(l=><option key={l.id} value={l.id}>{l.name}</option>)}</select></label>{['overview','transactions'].includes(view)&&<label><select aria-label="Período del reporte" value={period} onChange={e=>setPeriod(e.target.value)}>{reportPeriods.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select></label>}</div></div>
         {view==='overview'&&<Overview {...props} period={period} go={go} onDetail={setDetail}/>}
         {view==='transactions'&&<TransactionsView {...props} period={period} search={search} onSearch={setSearch} onDetail={setDetail} onCreate={()=>openCash('operations')}/>}
         {view==='accounts'&&<CashModule {...props} tab={cashTab} onTabChange={openCash}/>}
         {view==='inventory'&&<InventoryView {...props} onOpenCash={()=>openCash('operations')} cashLinks={<InventoryCashLinks {...props}/>} supplierOffset={<InventorySupplierOffsets {...props}/>} reports={<InventoryReportsView {...props}/>}/>}
+        {view==='sales'&&<SalesModule {...props}/>} 
         {view==='debts'&&<DebtsModule {...props} integrations={<><DebtsInventoryIntegrations {...props}/><InventorySupplierOffsets {...props} offsetOnly/></>} reports={<DebtReportsView {...props}/>} onOpenCash={()=>openCash('operations')}/>}
         {view==='reconciliations'&&<ReconciliationsView {...props}/>}
         {view==='approvals'&&<ApprovalsView {...props} onDetail={setDetail}/>}
