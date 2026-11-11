@@ -77,6 +77,10 @@ Agenda Financiera es el centro único de planificación de compromisos fijos, va
 
 Agenda no contabiliza pagos. Solo vincula egresos confirmados y soportados en Caja, permite distribuir uno entre varias obligaciones sin exceder su valor y conserva los saldos de abonos parciales. Los cambios confirmados y cierres excepcionales requieren Gerencia/Creador y dejan expediente permanente. [Alcance de Agenda Financiera](docs/agenda-financiera-module.md).
 
+## Módulo Informes
+
+Informes reúne en un panel las definiciones existentes de Caja, Inventarios y Deudas. La vista previa y los archivos PDF/XLSX comparten filtros, corte, cifras e identificador; la ausencia de un valor se conserva como **Sin dato** y nunca se completa con cero. Las descargas requieren un rol autorizado, se registran en la auditoría local y no almacenan una copia permanente del archivo. Los módulos sin una definición aprobada permanecen fuera del catálogo. [Alcance de Informes](docs/reports-module.md).
+
 ## Recursos institucionales identificados
 
 | Recurso | Destino autorizado |
@@ -123,5 +127,6 @@ Las herramientas manuales están disponibles mediante `npm run backup`, `npm run
 - [Módulo Deudas: obligaciones, recibos y cierres](docs/deudas-module.md)
 - [Módulo Ventas: clientes, OP, facturación y externos](docs/sales-module.md)
 - [Módulo Agenda Financiera: vencimientos, pagos y expediente](docs/agenda-financiera-module.md)
+- [Módulo Informes: vista previa, exportaciones y auditoría](docs/reports-module.md)
 
 No se han conectado Microsoft Graph, Outlook, OneDrive ni Google Drive. La importación de documentos históricos requiere identificar su propietario y autorización específica. El repositorio contiene código y fixtures ficticios de pruebas; los secretos, respaldos y registros reales permanecen fuera de él.

@@ -1,7 +1,7 @@
 'use client';
 import { getDebtCalendar, getRecurringBillBalance, getDebtModuleState } from '@/lib/debts/engine';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Package, LayoutDashboard, ArrowRightLeft, Wallet, Landmark, CheckCheck, ShieldCheck, Bell, Activity, Settings, Search, ChevronDown, ChevronRight, Plus, Download, ArrowUpRight, ArrowDownLeft, ArrowRight, Building2, Menu, X, HardDrive, Check, LockKeyhole, Users, ShoppingCart, Code2, CalendarClock } from 'lucide-react';
+import { Package, LayoutDashboard, ArrowRightLeft, Wallet, Landmark, CheckCheck, ShieldCheck, Bell, Activity, Settings, Search, ChevronDown, ChevronRight, Plus, Download, ArrowUpRight, ArrowDownLeft, ArrowRight, Building2, Menu, X, HardDrive, Check, LockKeyhole, Users, ShoppingCart, Code2, CalendarClock, FileBarChart } from 'lucide-react';
 import { createEmptyState, formatCOP, getAccountBalance, getDebtBalance, deriveAlerts, toCents, fromCents, add } from '@/lib/finance';
 import type { State, Actor, Transaction } from '@/lib/finance';
 import { LOCAL_STORAGE_KEY, LOCAL_WRITER_LOCK, initializeLocalStateStorage, decodeDemoState, inspectDemoState, holdDemoWriterLease } from '@/lib/demo-state';
@@ -18,6 +18,7 @@ import { InventoryReportsView } from './inventory-reports-view';
 import { CashModule, type CashModuleTab } from './cash-module';
 import { SalesModule } from './sales-module';
 import { AgendaModule } from './agenda-module';
+import { ReportsModule } from './reports-module';
 import { type View, type Mutation, type ViewProps, visibleAccounts, periodTotals, cashSeries, obligations, kindLabels, roleLabels, dateLabel, canWrite, WORKSPACE_DATE as DEMO_DATE } from './view-helpers';
 
 const STORAGE_KEY=LOCAL_STORAGE_KEY;
@@ -33,6 +34,7 @@ const navItems = [
   {id:'inventory',label:'Inventarios',icon:Package},
   {id:'sales',label:'Ventas',icon:ShoppingCart},
   {id:'debts',label:'Deudas',icon:Landmark},
+  {id:'reports',label:'Informes',icon:FileBarChart},
   {id:'reconciliations',label:'Conciliaciones',icon:CheckCheck},
   {id:'approvals',label:'Aprobaciones',icon:ShieldCheck},
   {id:'alerts',label:'Centro de alertas',icon:Bell},
@@ -47,6 +49,7 @@ const titles:Record<View,{title:string;subtitle:string}> = {
   transactions:{title:'Cada movimiento cuenta.',subtitle:'Registra, consulta y da trazabilidad al dinero de la empresa.'},
   accounts:{title:'Tu dinero, en un solo lugar.',subtitle:'Saldos calculados desde el libro de tesorería.'},
   debts:{title:'Obligaciones bajo control.',subtitle:'Entidades, inversionistas, proveedores y pagos recurrentes con una historia clara.'},
+  reports:{title:'La información, lista para decidir.',subtitle:'Vistas previas, exportaciones consistentes y una bitácora verificable.'},
   reconciliations:{title:'Las cuentas claras.',subtitle:'Contrasta el libro con los saldos de tus extractos.'},
   approvals:{title:'Decisiones con respaldo.',subtitle:'Un segundo par de ojos para cada operación sensible.'},
   alerts:{title:'Lo importante, a tiempo.',subtitle:'Detecta diferencias y resuelve pendientes con evidencia.'},
@@ -176,8 +179,8 @@ export function FinanceApp() {
     <aside className={'sidebar '+(sidebarOpen?'sidebar-open':'')}>
       <Brand/><button className="workspace-switch" onClick={()=>go('settings')}><span className="company-icon"><Building2 size={18}/></span><span><strong>Trefil Electric</strong><small>Espacio empresarial</small></span><ChevronDown size={14}/></button>
       <div className="nav-label">ESPACIO DE TRABAJO</div>
-      <nav aria-label="Navegación principal">{navItems.slice(0,9).map(({id,label,icon:Icon})=><button key={id} onClick={()=>go(id)} className={'nav-item '+(view===id?'active':'')} aria-current={view===id?'page':undefined}><Icon size={18}/><span>{label}</span>{Boolean(counts[id])&&<b>{counts[id]}</b>}</button>)}</nav>
-      <div className="nav-label control-label">CONTROL Y GESTIÓN</div><nav aria-label="Control y gestión">{navItems.slice(9).map(({id,label,icon:Icon})=><button key={id} onClick={()=>go(id)} className={'nav-item '+(view===id?'active':'')} aria-current={view===id?'page':undefined}><Icon size={18}/><span>{label}</span>{Boolean(counts[id])&&<b className={id==='alerts'?'alert-count':''}>{counts[id]}</b>}</button>)}<a className="nav-item" href="/equipo/"><Users size={18}/><span>Equipo</span></a><a className="nav-item" href="/desarrolladores/"><Code2 size={18}/><span>Desarrolladores</span></a></nav>
+      <nav aria-label="Navegación principal">{navItems.slice(0,10).map(({id,label,icon:Icon})=><button key={id} onClick={()=>go(id)} className={'nav-item '+(view===id?'active':'')} aria-current={view===id?'page':undefined}><Icon size={18}/><span>{label}</span>{Boolean(counts[id])&&<b>{counts[id]}</b>}</button>)}</nav>
+      <div className="nav-label control-label">CONTROL Y GESTIÓN</div><nav aria-label="Control y gestión">{navItems.slice(10).map(({id,label,icon:Icon})=><button key={id} onClick={()=>go(id)} className={'nav-item '+(view===id?'active':'')} aria-current={view===id?'page':undefined}><Icon size={18}/><span>{label}</span>{Boolean(counts[id])&&<b className={id==='alerts'?'alert-count':''}>{counts[id]}</b>}</button>)}<a className="nav-item" href="/equipo/"><Users size={18}/><span>Equipo</span></a><a className="nav-item" href="/desarrolladores/"><Code2 size={18}/><span>Desarrolladores</span></a></nav>
       <div className="sidebar-bottom"><div className="phase-card"><span className="phase-icon">↗</span><strong>Hecho para tu operación.</strong><p>Una base financiera.<br/>Todo un ecosistema por delante.</p><button onClick={()=>go('settings')}>Ver hoja de ruta <ArrowUpRight size={14}/></button></div><button className="backup-sidebar" onClick={()=>go('settings')}><HardDrive size={16}/><span>Respaldo sin verificar</span><i/></button><div className="sidebar-divider"/><button className="profile-button" onClick={()=>setProfileOpen(!profileOpen)} aria-expanded={profileOpen}><span className="avatar">TE</span><span><strong>{roleLabels[actor.role]}</strong><small>Perfil local · Sin autenticar</small></span><ChevronDown size={14}/></button></div>
       {profileOpen&&<div className="profile-menu"><div className="eyebrow">ESPACIO LOCAL</div><p className="local-profile-note">Este perfil identifica cambios en el navegador. El acceso institucional con usuarios personales sigue pendiente.</p><button onClick={()=>{go('settings');setProfileOpen(false);}}><span>Ver configuración</span><Settings size={15}/></button><a className="text-button" href="/acceso/"><LockKeyhole size={15}/> Acceso institucional</a></div>}
 
@@ -187,7 +190,7 @@ export function FinanceApp() {
       <main id="main-content">
         <div className="demo-bar"><span><i/> ESPACIO LOCAL <b>Guardado en este navegador · Conexión institucional pendiente</b></span><button onClick={()=>go('settings')}>Estado de implementación <ArrowRight size={13}/></button></div>
         {error&&<div className="error-banner" role="alert">{error}<button aria-label="Cerrar aviso de almacenamiento" onClick={()=>setError('')}><X size={16}/></button></div>}
-        <section className="page-heading"><div><div className="eyebrow">{view==='inventory'||view==='sales'?'OPERACIÓN':'FINANZAS'} <span>/</span> {view==='overview'?'VISTA GENERAL':navItems.find(i=>i.id===view)?.label.toUpperCase()}</div><h1>{titles[view].title.replace(/\.$/,'')}<span className="heading-dot">.</span></h1><p>{titles[view].subtitle}</p></div><div className="heading-buttons">{view!=='inventory'&&view!=='sales'&&view!=='debts'&&view!=='agenda'&&<button className="button button-secondary" onClick={exportReport}><Download size={16}/><span>Exportar reporte</span></button>}{canWrite(actor)&&view!=='accounts'&&view!=='inventory'&&view!=='sales'&&view!=='debts'&&view!=='agenda'&&<button className="button button-primary" onClick={()=>openCash(hasAccounts?'operations':'accounts')}><Plus size={18}/>{hasAccounts?'Ir a Caja':'Crear primera cuenta'}</button>}</div></section>
+        <section className="page-heading"><div><div className="eyebrow">{view==='inventory'||view==='sales'?'OPERACIÓN':'FINANZAS'} <span>/</span> {view==='overview'?'VISTA GENERAL':navItems.find(i=>i.id===view)?.label.toUpperCase()}</div><h1>{titles[view].title.replace(/\.$/,'')}<span className="heading-dot">.</span></h1><p>{titles[view].subtitle}</p></div><div className="heading-buttons">{!['inventory','sales','debts','agenda','reports'].includes(view)&&<button className="button button-secondary" onClick={exportReport}><Download size={16}/><span>Exportar reporte</span></button>}{canWrite(actor)&&!['accounts','inventory','sales','debts','agenda','reports'].includes(view)&&<button className="button button-primary" onClick={()=>openCash(hasAccounts?'operations':'accounts')}><Plus size={18}/>{hasAccounts?'Ir a Caja':'Crear primera cuenta'}</button>}</div></section>
         <div className="context-bar"><div className="context-date"><CalendarIcon/><span>Al <strong>{new Intl.DateTimeFormat('es-CO',{dateStyle:'long',timeZone:'America/Bogota'}).format(new Date(DEMO_DATE+'T12:00:00Z'))}</strong></span><span className="context-dot">·</span><span>COP <span className="muted">/</span> Bogotá</span></div><div className="context-filters"><label><Building2 size={14}/><select aria-label="Filtrar por sede" value={location} onChange={e=>setLocation(e.target.value)}><option value="all">Todas las sedes</option>{state.locations.map(l=><option key={l.id} value={l.id}>{l.name}</option>)}</select></label>{['overview','transactions'].includes(view)&&<label><select aria-label="Período del reporte" value={period} onChange={e=>setPeriod(e.target.value)}>{reportPeriods.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select></label>}</div></div>
         {view==='overview'&&<Overview {...props} period={period} go={go} onDetail={setDetail}/>}
         {view==='transactions'&&<TransactionsView {...props} period={period} search={search} onSearch={setSearch} onDetail={setDetail} onCreate={()=>openCash('operations')}/>}
@@ -196,6 +199,7 @@ export function FinanceApp() {
         {view==='inventory'&&<InventoryView {...props} onOpenCash={()=>openCash('operations')} cashLinks={<InventoryCashLinks {...props}/>} supplierOffset={<InventorySupplierOffsets {...props}/>} reports={<InventoryReportsView {...props}/>}/>}
         {view==='sales'&&<SalesModule {...props}/>} 
         {view==='debts'&&<DebtsModule {...props} integrations={<><DebtsInventoryIntegrations {...props}/><InventorySupplierOffsets {...props} offsetOnly/></>} reports={<DebtReportsView {...props}/>} onOpenCash={()=>openCash('operations')}/>}
+        {view==='reports'&&<ReportsModule {...props}/>}
         {view==='reconciliations'&&<ReconciliationsView {...props}/>}
         {view==='approvals'&&<ApprovalsView {...props} onDetail={setDetail}/>}
         {view==='alerts'&&<AlertsView {...props}/>}

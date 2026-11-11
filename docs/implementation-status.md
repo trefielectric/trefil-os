@@ -54,6 +54,12 @@ Las fechas contractuales y operativas se almacenan separadas. Los servicios púb
 
 El módulo nunca registra un pago: enlaza únicamente egresos reales, confirmados y soportados de Caja. Un egreso puede distribuirse entre varias obligaciones sin excederse; los abonos parciales conservan saldo y aviso. Los cambios confirmados mantienen el dato anterior hasta decisión de Gerencia/Creador. Las novedades no se resuelven por lectura y un cierre excepcional no altera la obligación ni su saldo. El alcance detallado está en [Agenda Financiera](agenda-financiera-module.md). La persistencia sigue siendo local y todavía no existe un adaptador remoto de Agenda.
 
+## Informes local
+
+El documento del Módulo 08 se incorporó como panel principal de Informes. Reutiliza las fuentes ya implementadas de Caja, Inventarios y Deudas para que vista previa, PDF y XLSX conserven idénticos filtros, corte, cifras e identificador. Los valores desconocidos permanecen como “Sin dato”; no se inventa cobertura desde 2021 ni se suman fotografías mensuales de inventario.
+
+Las descargas requieren permiso local, control de escritura y un registro previo de la solicitud. La bitácora conserva actor, hora, módulo, período, sede, formato, identificador y resultado, pero no almacena el archivo. Este control local todavía no equivale a autenticación institucional ni a una cola remota. Producción, Reportes generales y Control Administrativo permanecen fuera del catálogo hasta que sus módulos definan formalmente los reportes. [Alcance de Informes](reports-module.md).
+
 ## Qué está implementado y qué sigue pendiente
 
 La web conserva las funciones para movimientos equilibrados, aprobaciones independientes, reversos, cuentas, conciliaciones, obligaciones, pagos separados entre capital e interés, simulaciones, alertas y auditoría. Sus listas empiezan vacías. El perfil local **no es autenticación ni autorización institucional** y no sustituye a las personas distintas que exige una aprobación empresarial. Cualquier dato del navegador puede ser editado por su usuario y nunca debe usarse como autoridad empresarial.
