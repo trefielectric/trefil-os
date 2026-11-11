@@ -1,3 +1,4 @@
+import { assertDebtPeriodOpen, getDebtModulePrincipalBalance, getDebtCalendar, getDebtModuleState, getDebtModuleAlerts, getRecurringBillBalance, getDebtCapitalBasis, getActualDebtModulePayments } from '../debts/engine';
 import { getInventoryAlerts } from '../inventory/engine';
 import { buildAmortization, validateDate } from './amortization';
 import { add, fromCents, money, rateFraction, sub, toCents } from './money';
@@ -117,7 +118,7 @@ export function approveTransaction(state: State, transactionId: string, actor: A
   if (original.requestedBy === actor.id) throw new Error('La aprobación requiere otra persona autorizada.');
   if (!isBalanced(original)) throw new Error('No se puede aprobar un movimiento desequilibrado.');
   if(isCashEnabled(state)&&original.reversalOf)throw new Error('La corrección requiere autorización institucional; una aprobación local no aplica el reverso.');
-  for(const payment of state.debtPayments.filter(row=>row.transactionId===transactionId)){if(toCents(payment.principal)>toCents(getDebtBalance(state,payment.debtId)))throw new Error('El saldo de la obligación cambió; revisa el pago antes de aprobar.');}
+  for(const payment of state.debtPayments.filter(row=>row.transactionId===transactionId)){if(state.debtModule)assertDebtPeriodOpen(state,original.date);if(toCents(payment.principal)>toCents(getDebtBalance(state,payment.debtId)))throw new Error('El saldo de la obligación cambió; revisa el pago antes de aprobar.');}
   const cashSessionIds=assertCashPostingAllowed(state,{date:original.date,accountIds:original.entries.map(row=>row.accountId),sessionIds:original.cashSessionIds});
   const next = copy(state);
   const transaction = next.transactions.find(row => row.id === transactionId)!;
@@ -177,10 +178,8 @@ export function getSupplierOffsets(state: State, debtId?: string) {
   return (state.inventory?.supplierOffsets ?? []).filter(row => (!debtId || row.debtId === debtId) && state.debts.some(debt => debt.id === row.debtId && debt.kind === 'supplier'));
 }
 
-export function getDebtBalance(state: State, debtId: string): Money {
-  const debt = state.debts.find(item => item.id === debtId);
-  if (!debt) throw new Error('La obligación no existe.');
-  return sub(debt.principal, add(...getEffectiveDebtPayments(state, debtId).map(payment => payment.principal), ...getSupplierOffsets(state, debtId).map(row => row.amount))); 
+export function getDebtBalance(state: State, debtId: string, asOfDate=todayBogota()): Money {
+  return getDebtModulePrincipalBalance(state,debtId,asOfDate);
 }
 
 export function recordDebtPayment(state: State, input: DebtPaymentInput, actor: Actor): State {
@@ -198,8 +197,10 @@ export function recordDebtPayment(state: State, input: DebtPaymentInput, actor: 
   }
   validateDate(input.date);
   if (input.date > todayBogota()) throw new Error('Un pago realizado no puede tener fecha futura.');
+  if(state.debtModule)assertDebtPeriodOpen(state,input.date);
   if (input.date < debt.startDate) throw new Error('El pago no puede ser anterior al desembolso de la obligación.');
   accountFor(state, input.accountId, debt.locationId);
+  if(getDebtModuleState(state).obligations.some(row=>row.debtId===debt.id)&&getDebtCapitalBasis(state,debt.id,input.date)==='0.00')throw new Error('La obligación todavía no tiene ORIGEN o desembolso confirmado para aplicar pagos.');
   const cashSessionIds=assertCashPostingAllowed(state,{date:input.date,accountIds:[input.accountId]});
   const amount = positiveAmount(input.amount); const principal = money(input.principal); const interest = money(input.interest);
   if ([principal,interest,insurance,commission,lateFee].some(value=>toCents(value)<0n)||add(principal,interest,insurance,commission,lateFee)!==amount) throw new Error('El capital más el interés, seguros, comisiones y mora debe ser igual al pago.');
@@ -328,7 +329,8 @@ export function deriveAlerts(state: State, today = todayBogota()): Alert[] {
   for (const group of duplicateGroups.values()) if (group.length > 1) push(`duplicate:${group.map(row => row.id).sort().join(':')}`, 'possible_duplicate', 'Posible movimiento duplicado', group[0].description, 'warning', 'Tesorería', group.map(row => row.reference).join(' · '));
   const upcomingObligations = getUpcomingObligations(state, today);
   for (const debt of state.debts) {
-    const balance = getDebtBalance(state, debt.id);
+    if(getDebtModuleState(state).obligations.some(row=>row.debtId===debt.id))continue;
+    const balance = getDebtBalance(state, debt.id,today);
     if (toCents(balance) <= 0n) continue;
     const actualPayments = getEffectiveDebtPayments(state, debt.id);
     const firstUnpaid = upcomingObligations.find(row => row.debtId === debt.id);
@@ -361,6 +363,7 @@ export function deriveAlerts(state: State, today = todayBogota()): Alert[] {
     if(results.some(alert=>alert.id===row.id))continue;
     results.push({id:row.id,type:row.priority===2?'finished_product_shortage':'inventory_'+row.type,title:row.title,description:row.description,severity:row.severity,responsible:'Inventarios',status:row.status,dueDate:row.date,evidence:row.quantity?`Diferencia documentada: ${row.quantity}`:row.description,comments:[],history:row.history.map(event=>({date:event.date,actorName:state.members.find(member=>member.id===event.actorId)?.name??'Inventarios',action:event.action})),...(row.locationId?{locationId:row.locationId}:{})});
   }
+  if(state.debtModule)for(const row of getDebtModuleAlerts(state,today)){if(results.some(alert=>alert.id===row.id))continue;results.push({id:row.id,type:'debts_'+row.type,title:row.title,description:row.description,severity:row.severity,responsible:'Administración / Deudas',status:row.status,dueDate:row.date,evidence:row.amount?`Importe documentado: ${row.amount} COP`:row.description,comments:[],history:row.history.map(event=>({date:event.date,actorName:state.members.find(member=>member.id===event.actorId)?.name??'Deudas',action:event.action})),locationId:row.locationId});}
   const persisted = new Map(state.alerts.map(alert => [alert.id, alert]));
   return results.map(alert => {
     const saved = persisted.get(alert.id);
@@ -375,7 +378,7 @@ export function getSummary(state: State, today = todayBogota()): Summary {
   const cashReport=isCashEnabled(state)?getCashReport(state,{startDate:`${month}-01`,endDate:today}):undefined;
   const posted = state.transactions.filter(transaction => transaction.status === 'posted' && transaction.date.startsWith(month) && transaction.date <= today);
   const expenseKinds = ['expense', 'salary', 'reimbursement', 'personal_expense'];
-  const payments = getEffectiveDebtPayments(state);
+  const payments = getActualDebtModulePayments(state,undefined,today);
   const netByKind = (kinds: string[]): Money => fromCents(posted.reduce((total, transaction) => {
     const source = transaction.reversalOf ? state.transactions.find(row => row.id === transaction.reversalOf) : transaction;
     return source && kinds.includes(source.kind) ? total + toCents(transaction.amount) * (transaction.reversalOf ? -1n : 1n) : total;
@@ -384,7 +387,7 @@ export function getSummary(state: State, today = todayBogota()): Summary {
     available: cashReport?.closingAvailable??add(...state.accounts.filter(account => account.active && account.kind !== 'ledger').map(account => getAccountBalance(state, account.id))),
     income: cashReport?.externalInflows??netByKind(['income']),
     expenses: cashReport?.operatingExpenses??netByKind(expenseKinds),
-    debt: add(...state.debts.map(debt => getDebtBalance(state, debt.id))),
+    debt: add(...state.debts.map(debt => getDebtBalance(state, debt.id,today)),...getDebtModuleState(state).recurringBills.map(bill=>getRecurringBillBalance(state,bill.id,today))),
     interestPaid: add(...payments.map(payment => payment.interest)),
     principalPaid: add(...payments.map(payment => payment.principal)),
     pendingApprovals: state.transactions.filter(transaction => transaction.status === 'pending').length,
@@ -400,7 +403,10 @@ export function recordAccess(state: State, actor: Actor, action: 'Inicio de sesi
 export function getUpcomingObligations(state: State, today = todayBogota()): UpcomingObligation[] {
   validateDate(today);
   const results: UpcomingObligation[] = [];
+  const officialCalendar=state.debtModule?getDebtCalendar(state,today):[];
   for (const debt of state.debts) {
+    const modern=getDebtModuleState(state).obligations.some(row=>row.debtId===debt.id)||getDebtModuleState(state).officialPlans.some(row=>row.debtId===debt.id);
+    if(modern){for(const item of officialCalendar.filter(row=>row.debtId===debt.id&&toCents(row.remaining)>0n)){const plan=getDebtModuleState(state).officialPlans.find(row=>row.id===item.planId);const installment=plan?.installments.find(row=>row.id===item.installmentId);const paidIds=new Set(getActualDebtModulePayments(state,debt.id,today).map(row=>row.id));const allocations=getDebtModuleState(state).installmentAllocations.filter(row=>row.installmentId===item.installmentId&&row.date<=today&&paidIds.has(row.debtPaymentId));const remainingComponent=(field:'principal'|'interest'|'insurance'|'commission'|'lateFee')=>{const expected=toCents(installment?.[field]??'0.00');const paid=allocations.reduce((sum,row)=>sum+toCents(row[field]),0n);return fromCents(expected>paid?expected-paid:0n);};const days=dateDistance(today,item.dueDate);results.push({debtId:debt.id,creditor:debt.creditor,period:installment?.number??1,date:item.dueDate,amount:item.remaining,interest:remainingComponent('interest'),principal:debt.kind==='supplier'?getDebtBalance(state,debt.id,today):remainingComponent('principal'),insurance:remainingComponent('insurance'),commission:remainingComponent('commission'),lateFee:remainingComponent('lateFee'),status:days<0?'overdue':days<=7?'upcoming':'future',projected:false});}continue;}
     if (toCents(getDebtBalance(state, debt.id)) <= 0n) continue;
     const payments = getEffectiveDebtPayments(state, debt.id);
     if(debt.kind==='supplier'){

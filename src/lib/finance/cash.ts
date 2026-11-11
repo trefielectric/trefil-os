@@ -1,3 +1,4 @@
+import { assertDebtPeriodOpen, getDebtModuleState } from '../debts/engine';
 import { validateDate } from './amortization';
 import { add, fromCents, money, sub, toCents } from './money';
 import { createTransaction, getAccountBalance, recordDebtPayment, todayBogota } from './engine';
@@ -138,13 +139,21 @@ export function registerCashMovement(state:State,input:CashMovementInput,actor:A
   if(input.kind==='transfer'&&selected?.direction!=='transfer')throw new Error('Selecciona una categoría de traslado interno.');
   const categoryName=temporary?CASH_TEMPORARY_CATEGORY.name:selected!.name;
   const categoryId=temporary?CASH_TEMPORARY_CATEGORY.id:selected!.id;
+  if(state.debtModule&&(input.kind==='loan'||input.kind==='debt_payment'||refs.some(row=>row.module==='debts')))assertDebtPeriodOpen(state,date);
   if(['prestamos','inversiones'].includes(categoryId)){
     if(input.kind!=='loan')throw new Error('Préstamos e inversiones son financiación, no ingresos operativos.');
     const debt=state.debts.find(row=>row.id===input.debtId&&row.locationId===target.locationId);if(!debt)throw new Error('Crea o vincula primero la obligación con sus condiciones en Deudas.');
+    const dossier=getDebtModuleState(state).obligations.find(row=>row.debtId===debt.id);if(dossier){if(dossier.originMode!=='cash_new')throw new Error('La ficha histórica no admite otro desembolso: requiere una nueva obligación o renegociación autorizada.');if(input.party.trim().toLocaleLowerCase('es-CO')!==debt.creditor.trim().toLocaleLowerCase('es-CO'))throw new Error('El tercero del desembolso debe coincidir con el acreedor.');if(debt.kind==='loan'&&!getDebtModuleState(state).officialPlans.some(row=>row.debtId===debt.id))throw new Error('Registra primero las cuotas documentadas del plan oficial de la entidad.');}
+    if(debt.kind==='supplier')throw new Error('Una factura de proveedor no es un préstamo recibido.');
     if((categoryId==='inversiones')!==(debt.kind==='investment'))throw new Error('El tipo de obligación no coincide con la entrada de financiación.');
     const previous=getCashState(state).metadata.filter(row=>row.externalReferences.some(reference=>reference.module==='debts'&&reference.id===debt.id)).map(row=>state.transactions.find(transaction=>transaction.id===row.transactionId)).filter((row):row is Transaction=>!!row&&row.kind==='loan'&&row.status!=='rejected'&&!row.reversedBy&&row.idempotencyKey!==input.idempotencyKey).reduce((total,row)=>total+toCents(row.amount),0n);
     if(previous+toCents(money(input.amount))>toCents(debt.principal))throw new Error('El desembolso acumulado supera el capital de la obligación; no se puede duplicar el ingreso.');
-    refs.push({module:'debts',id:debt.id,label:debt.creditor});
+    if(refs.some(reference=>reference.module==='debts'&&reference.id!==debt.id)){
+      throw new Error('Cada desembolso de Caja corresponde a una sola obligación.');
+    }
+    if(!refs.some(reference=>reference.module==='debts'&&reference.id===debt.id)){
+      refs.push({module:'debts',id:debt.id,label:debt.creditor});
+    }
   }
   if(categoryId==='pago-deudas'&&!refs.some(row=>row.module==='assets'||row.module==='debts'))throw new Error('El cobro debe identificar el préstamo otorgado mediante una referencia de activo o deuda.');
   if(outgoing?.groupId==='financiacion-fondos'&&input.kind!=='debt_payment')throw new Error('Las cuotas de financiación deben separar capital e interés y vincular una obligación.');

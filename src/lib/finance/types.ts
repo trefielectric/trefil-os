@@ -1,3 +1,4 @@
+import type { DebtModuleState } from '../debts/types';
 import type { InventoryState } from '../inventory/types';
 import type { CashState } from './cash-types';
 export type Money = string;
@@ -25,6 +26,6 @@ export interface AlertHistory { date: string; actorName: string; action: string 
 export interface Alert { id: string; type: string; title: string; description: string; severity: 'critical' | 'warning' | 'info'; responsible: string; status: 'open' | 'in_progress' | 'resolved'; dueDate: string; evidence: string; comments: AlertComment[]; history: AlertHistory[]; resolution?: string; locationId?: string }
 export interface AuditEvent { id: string; action: string; entityType: string; entityId: string; actorId: string; actorName: string; timestamp: string; reason?: string; locationId?: string; before?: string; after?: string }
 export interface BackupRun { id: string; startedAt: string; completedAt?: string; status: 'success' | 'failed' | 'running'; verified: boolean; sizeBytes?: number; checksum?: string; destination: string; restoreVerifiedAt?: string; error?: string }
-export interface State { version: 1; organization: { id: string; name: string; taxId: string }; locations: { id: string; name: string }[]; accounts: Account[]; transactions: Transaction[]; debts: Debt[]; debtPayments: DebtPayment[]; reconciliations: Reconciliation[]; alerts: Alert[]; audit: AuditEvent[]; members: Member[]; backups: BackupRun[]; cash?: CashState; inventory?: InventoryState }
+export interface State { version: 1; organization: { id: string; name: string; taxId: string }; locations: { id: string; name: string }[]; accounts: Account[]; transactions: Transaction[]; debts: Debt[]; debtPayments: DebtPayment[]; reconciliations: Reconciliation[]; alerts: Alert[]; audit: AuditEvent[]; members: Member[]; backups: BackupRun[]; cash?: CashState; inventory?: InventoryState; debtModule?: DebtModuleState }
 export interface Summary { available: Money; income: Money; expenses: Money; debt: Money; interestPaid: Money; principalPaid: Money; pendingApprovals: number; pendingReconciliations: number; alerts: number }
-export interface UpcomingObligation { debtId: string; creditor: string; period: number; date: string; amount: Money; interest: Money; principal: Money; status: 'overdue' | 'upcoming' | 'future'; projected: true }
+export interface UpcomingObligation { debtId: string; creditor: string; period: number; date: string; amount: Money; interest: Money; principal: Money; insurance?: Money; commission?: Money; lateFee?: Money; status: 'overdue' | 'upcoming' | 'future'; projected: boolean }
