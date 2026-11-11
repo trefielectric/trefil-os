@@ -6,7 +6,7 @@
   "ignoreCommand": "node scripts/vercel-build-gate.mjs",
   "git": {
     "deploymentEnabled": {
-      "main": false,
+      "main": true,
       "codex/caja-module": false,
       "codex/inventory-module": false,
       "codex/debts-module": false,

@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 
 /** Vercel ignoreCommand: exit 0 skips deployment; exit 1 continues its build. */
 export function ignoredBuildExitCode(environment) {
-  return environment === 'preview' ? 1 : 0;
+  return environment === 'preview' || environment === 'production' ? 1 : 0;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
