@@ -427,5 +427,6 @@ enabled = true
 
 [functions.workforce-invite]
 entrypoint = "./functions/workforce-invite/index.js"
-# The scoped RPC additionally checks the caller’s current role and AAL2.
-verify_jwt = true
+# Status and the initial administrator begin before a session exists. The
+# function restricts origins; account links are revalidated by a scoped RPC.
+verify_jwt = false
