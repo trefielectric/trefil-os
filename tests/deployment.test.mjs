@@ -7,6 +7,7 @@ import { ignoredBuildExitCode } from '../scripts/vercel-build-gate.mjs';
 
 const gate = fileURLToPath(new URL('../scripts/vercel-build-gate.mjs', import.meta.url));
 const config = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'));
+const workforceInvite = readFileSync(new URL('../supabase/functions/workforce-invite/index.js', import.meta.url), 'utf8');
 
 test('Vercel ignore command continues production and preview, skipping other environments', () => {
   for (const environment of ['development', 'custom', '', undefined]) assert.equal(ignoredBuildExitCode(environment), 0);
@@ -45,4 +46,10 @@ test('response policy restricts network access to the institutional project and 
   assert.equal(headers.get('x-frame-options'), 'DENY');
   assert.equal(headers.get('referrer-policy'), 'no-referrer');
   assert.equal(headers.get('x-content-type-options'), 'nosniff');
+});
+
+test('Equipo invite endpoint accepts the exact production domains', () => {
+  assert.match(workforceInvite, /https:\/\/trefil-os-git-main-administrativo914\.vercel\.app/);
+  assert.match(workforceInvite, /https:\/\/project-kmpca\.vercel\.app/);
+  assert.doesNotMatch(workforceInvite, /https:\/\/\*\.vercel\.app/);
 });

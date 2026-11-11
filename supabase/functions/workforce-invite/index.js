@@ -1,7 +1,12 @@
 import { createClient } from "npm:@supabase/supabase-js@2.119.0";
 
 const previewOrigin = "https://trefil-os-git-codex-finance-preview-administrativo914.vercel.app";
-const origins = new Set([previewOrigin, ...(Deno.env.get("WORKFORCE_APP_ORIGINS") ?? "").split(",").map((value) => value.trim()).filter(Boolean)]);
+const origins = new Set([
+  previewOrigin,
+  "https://trefil-os-git-main-administrativo914.vercel.app",
+  "https://project-kmpca.vercel.app",
+  ...(Deno.env.get("WORKFORCE_APP_ORIGINS") ?? "").split(",").map((value) => value.trim()).filter(Boolean),
+]);
 const options = { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } };
 const key = (name) => {
   const raw = Deno.env.get(name);
