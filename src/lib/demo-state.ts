@@ -3,6 +3,7 @@ import { add, buildAmortization, fromCents, getAccountBalance, getDebtBalance, g
 import { createEmptyState } from './finance/empty';
 import { validateInventoryState } from './inventory/validation';
 import { validateCashState } from './finance/cash-validation';
+import { validateSalesState } from './sales/validation';
 
 export const DEMO_STORAGE_KEY = 'trefil-os:demo:v1';
 export const DEMO_WRITER_LOCK = 'trefil-os-demo-write';
@@ -195,6 +196,7 @@ export function inspectDemoState(value: unknown): { ok: true; state: State } | {
       if(root.cash!==undefined)validateCashState(state);
       if(root.inventory!==undefined)validateInventoryState(state);
       if(root.debtModule!==undefined)validateDebtModuleState(state);
+      if(root.salesModule!==undefined)validateSalesState(state);
       state.accounts.forEach(account => getAccountBalance(state,account.id));
       state.debts.forEach(debt => { if (toCents(getDebtBalance(state,debt.id)) < 0n) invalid('debtPayments.capital superior al saldo'); });
       getSummary(state,'2026-11-10');
