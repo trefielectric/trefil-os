@@ -65,6 +65,12 @@ El directorio único de proveedores permite facturas con vencimiento manual. Una
 
 Control de pagos confirma cada recibo mensual, soporte, importe, vencimiento y consumo informado. Su agenda reúne las cuotas documentadas y recibos, y conserva pagos parciales y pendientes reconocidos al cierre. Un pago posterior no reescribe el informe cerrado. Los análisis de tendencias y variaciones de costos/consumos quedan reservados al futuro módulo Reportes. [Alcance de Deudas](docs/deudas-module.md).
 
+## Módulo Ventas
+
+Ventas reúne clientes, listas de precios, cotizaciones, OP, facturas, vendedores externos, devoluciones semanales, garantías, lotes, inventario disponible, conteos de cierre y comisiones pendientes de parametrización. Los documentos conservan series e historia; TFI exige guía y TFM/TFMP esperan confirmación de Producción.
+
+La factura no crea recaudo. Los pagos reportados por vendedores externos solo afectan cartera después de verificarse contra Caja. Cotizaciones, GAR y documentos anulados no crean movimientos monetarios implícitos. [Alcance de Ventas](docs/sales-module.md).
+
 ## Recursos institucionales identificados
 
 | Recurso | Destino autorizado |
@@ -109,5 +115,6 @@ Las herramientas manuales están disponibles mediante `npm run backup`, `npm run
 - [Módulo Caja: alcance, decisiones y verificación](docs/caja-module.md)
 - [Módulo Inventarios: alcance e informes](docs/inventory-module.md)
 - [Módulo Deudas: obligaciones, recibos y cierres](docs/deudas-module.md)
+- [Módulo Ventas: clientes, OP, facturación y externos](docs/sales-module.md)
 
 No se han conectado Microsoft Graph, Outlook, OneDrive ni Google Drive. La importación de documentos históricos requiere identificar su propietario y autorización específica. El repositorio contiene código y fixtures ficticios de pruebas; los secretos, respaldos y registros reales permanecen fuera de él.
