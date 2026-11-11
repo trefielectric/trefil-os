@@ -3,7 +3,16 @@ import { createClient } from "npm:@supabase/supabase-js@2.119.0";
 const previewOrigin = "https://trefil-os-git-codex-finance-preview-administrativo914.vercel.app";
 const origins = new Set([previewOrigin, ...(Deno.env.get("WORKFORCE_APP_ORIGINS") ?? "").split(",").map((value) => value.trim()).filter(Boolean)]);
 const options = { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } };
-const key = (name) => JSON.parse(Deno.env.get(name) ?? "{}").default;
+const key = (name) => {
+  const raw = Deno.env.get(name);
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw);
+    return typeof parsed === "string" ? parsed : parsed?.default;
+  } catch {
+    return raw;
+  }
+};
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const hash = /^[0-9a-f]{64}$/;
 const lastFour = /^\d{4}$/;
@@ -31,6 +40,7 @@ Deno.serve(async (request) => {
 
     if (payload?.action === "status") {
       const { data, error } = await admin.rpc("workforce_bootstrap_available");
+      if (error) console.error("workforce status", error.message);
       return error ? respond({ code: "unavailable" }, 503) : respond({ available: data === true });
     }
 
@@ -71,7 +81,8 @@ Deno.serve(async (request) => {
     const link = new URL("/equipo/", origin);
     link.hash = new URLSearchParams({ activacion: data.properties.hashed_token, tipo: type }).toString();
     return respond({ link: link.href, type });
-  } catch {
+  } catch (error) {
+    console.error("workforce invite", error instanceof Error ? error.message : "unknown");
     return respond({ code: "unavailable" }, 503);
   }
 });
