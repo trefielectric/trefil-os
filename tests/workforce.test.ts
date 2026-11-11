@@ -3,10 +3,21 @@ import test from "node:test";
 import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 import {
+  documentIdentity,
   workDuration,
   type Shift,
   type WorkforceDay,
 } from "../src/lib/workforce";
+
+test("La cédula se transforma antes de salir del navegador", async () => {
+  const first = await documentIdentity("1.234.567.890");
+  const repeated = await documentIdentity("1234567890");
+  assert.deepEqual(first, repeated);
+  assert.equal(first.hash.length, 64);
+  assert.equal(first.lastFour, "7890");
+  assert.ok(!first.authEmail.includes("1234567890"));
+  await assert.rejects(documentIdentity("cedula"), /cédula válido/);
+});
 
 const uuid = (suffix: number) =>
   "a0000000-0000-4000-8000-" + String(suffix).padStart(12, "0");
@@ -242,7 +253,10 @@ test("Equipo: verified activation, team boundaries and server-owned attendance",
           team.people.map((person) => person.id),
           [directoryId(worker)],
         );
-        assert.equal(team.people[0].email, null);
+        assert.equal(
+          (team.people[0] as unknown as { email: string | null }).email,
+          null,
+        );
         assert.ok(
           team.shifts.every((shift) => shift.person_id === directoryId(worker)),
         );
