@@ -353,7 +353,7 @@ export function WorkforceApp() {
                   ? "Crea una contraseña para tu cuenta de Equipo."
                   : setup
                     ? "Esta primera cuenta podrá crear personas, asignar roles y administrar accesos desde la plataforma."
-                    : "Usa tu número de cédula y la contraseña de Equipo."}
+                    : "Usa tu correo o número de cédula y la contraseña de Equipo."}
               </p>
               <form onSubmit={submitAccess} className="workforce-form">
                 {setup && <>
@@ -362,10 +362,9 @@ export function WorkforceApp() {
                   <Field label="Área"><input name="area" minLength={2} maxLength={120} required /></Field>
                 </>}
                 {!activation && (
-                  <Field label="Número de cédula" hint="La plataforma no guardará el número completo.">
+                  <Field label={setup ? "Número de cédula" : "Correo o número de cédula"} hint={setup ? "La plataforma no guardará el número completo." : "El administrador inicial también puede ingresar con su correo."}>
                     <input
                       name="document"
-                      inputMode="numeric"
                       autoComplete="username"
                       required
                     />
