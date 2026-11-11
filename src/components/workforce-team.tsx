@@ -33,6 +33,7 @@ export function TeamManagement({
     null,
   );
   const [taskForm, setTaskForm] = useState<DailyTask | "new" | null>(null);
+  const [accessPerson, setAccessPerson] = useState<DirectoryPerson | null>(null);
   const [invite, setInvite] = useState<{ name: string; link: string } | null>(
     null,
   );
@@ -221,6 +222,15 @@ export function TeamManagement({
                   </div>
                   {(canPeople || canAccess) && (
                     <div className="workforce-actions">
+                      {canRoles && (
+                        <button
+                          className="button button-secondary"
+                          onClick={() => setAccessPerson(person)}
+                          disabled={busy}
+                        >
+                          <ShieldCheck size={15} /> Funciones
+                        </button>
+                      )}
                       {canAccess && person.active && (
                         <button
                           className="button button-secondary"
@@ -251,6 +261,18 @@ export function TeamManagement({
             <p className="workforce-empty">
               Todavía no tienes personas asignadas.
             </p>
+          )}
+          {accessPerson && canRoles && (
+            <PersonAccessPanel
+              person={accessPerson}
+              roles={snapshot.roles}
+              permissions={snapshot.permissions}
+              close={() => setAccessPerson(null)}
+              edit={() => {
+                setPersonForm(accessPerson);
+                setAccessPerson(null);
+              }}
+            />
           )}
         </section>
       ) : (
@@ -350,6 +372,57 @@ export function TeamManagement({
         </>
       )}
     </>
+  );
+}
+
+function PersonAccessPanel({
+  person,
+  roles,
+  permissions,
+  close,
+  edit,
+}: {
+  person: DirectoryPerson;
+  roles: RoleDefinition[];
+  permissions: PermissionDefinition[];
+  close: () => void;
+  edit: () => void;
+}) {
+  const role = roles.find((item) => item.code === person.access_role);
+  const enabled = new Set(role?.permissions ?? []);
+  const groups = [
+    ["personal", "Funciones personales"],
+    ["team", "Equipo y coordinación"],
+    ["administration", "Administración y acceso a información"],
+  ] as const;
+  return (
+    <section className="workforce-inline-form workforce-access-panel" aria-label={`Funciones de ${person.full_name}`}>
+      <div className="workforce-card-heading">
+        <ShieldCheck size={20} />
+        <div>
+          <h3>Funciones de {person.full_name}</h3>
+          <p>Este perfil hereda las funciones del rol <strong>{role?.name ?? person.access_role}</strong>.</p>
+        </div>
+      </div>
+      <div className="workforce-permission-groups">
+        {groups.map(([category, title]) => (
+          <fieldset key={category}>
+            <legend>{title}</legend>
+            {permissions.filter((permission) => permission.category === category).map((permission) => (
+              <label key={permission.code} className="workforce-permission-option">
+                <input type="checkbox" checked={enabled.has(permission.code)} readOnly />
+                <span><strong>{permission.name}</strong><small>{permission.description}</small></span>
+              </label>
+            ))}
+          </fieldset>
+        ))}
+      </div>
+      <p className="workforce-form-note">Para cambiar estas funciones, edita el rol de esta persona o crea un rol nuevo en “Funciones y roles”. Los controles se vuelven a validar en el servidor.</p>
+      <div className="workforce-actions">
+        <button className="button button-primary" type="button" onClick={edit}><Pencil size={15} /> Cambiar rol</button>
+        <button className="button button-secondary" type="button" onClick={close}>Cerrar</button>
+      </div>
+    </section>
   );
 }
 
