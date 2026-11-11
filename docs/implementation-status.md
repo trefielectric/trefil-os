@@ -46,6 +46,14 @@ El corte funcional de Ventas del 11 de noviembre de 2026 se incorporó como un a
 
 Facturar no registra cobros; los comprobantes externos no reducen cartera hasta cruzarse con un ingreso real de Caja. Cotizar no reserva inventario. TFM/TFMP esperan el estado de Producción y GAR no genera una segunda venta. El despacho crea una sola salida en el libro local de Inventarios y la DV verificada crea un solo reingreso; la factura no repite el movimiento. La sincronización remota continúa pendiente de la integración institucional. Los detalles están en [Ventas](sales-module.md).
 
+## Agenda Financiera local
+
+El documento funcional de Agenda Financiera se incorporó como apartado principal con Panel, Calendario, Obligaciones, Proveedores, Verificación, Pagos, Historial y Configuración. El estado inicial conserva cero obligaciones y no crea compromisos desde otros módulos.
+
+Las fechas contractuales y operativas se almacenan separadas. Los servicios públicos vencidos en día no hábil se anticipan al hábil anterior; los demás pasan al hábil siguiente. Una factura de proveedor sin fecha pactada conserva su saldo y revisión interna, pero no se declara vencida automáticamente.
+
+El módulo nunca registra un pago: enlaza únicamente egresos reales, confirmados y soportados de Caja. Un egreso puede distribuirse entre varias obligaciones sin excederse; los abonos parciales conservan saldo y aviso. Los cambios confirmados mantienen el dato anterior hasta decisión de Gerencia/Creador. Las novedades no se resuelven por lectura y un cierre excepcional no altera la obligación ni su saldo. El alcance detallado está en [Agenda Financiera](agenda-financiera-module.md). La persistencia sigue siendo local y todavía no existe un adaptador remoto de Agenda.
+
 ## Qué está implementado y qué sigue pendiente
 
 La web conserva las funciones para movimientos equilibrados, aprobaciones independientes, reversos, cuentas, conciliaciones, obligaciones, pagos separados entre capital e interés, simulaciones, alertas y auditoría. Sus listas empiezan vacías. El perfil local **no es autenticación ni autorización institucional** y no sustituye a las personas distintas que exige una aprobación empresarial. Cualquier dato del navegador puede ser editado por su usuario y nunca debe usarse como autoridad empresarial.

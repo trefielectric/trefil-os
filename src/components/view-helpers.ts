@@ -2,7 +2,7 @@ import { getDebtCalendar } from '@/lib/debts/engine';
 import { add, fromCents, toCents, buildAmortization, getAccountBalance, getUpcomingObligations, todayBogota, getCashReport } from '@/lib/finance';
 import type { State, Transaction, TransactionKind, Money, Actor, Debt, AmortizationRow } from '@/lib/finance';
 
-export type View = 'sales'|'inventory'|'overview'|'transactions'|'accounts'|'debts'|'reconciliations'|'approvals'|'alerts'|'audit'|'settings';
+export type View = 'agenda'|'sales'|'inventory'|'overview'|'transactions'|'accounts'|'debts'|'reconciliations'|'approvals'|'alerts'|'audit'|'settings';
 export type Mutation = (operation:(current:State)=>State,message:string)=>boolean;
 export interface ViewProps { state:State; actor:Actor; location:string; mutate:Mutation; notify:(message:string)=>void }
 export const DEMO_DATE='2026-11-10';

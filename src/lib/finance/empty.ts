@@ -1,6 +1,7 @@
 import { createEmptyDebtModuleState } from '../debts/engine';
 import { createEmptyInventoryState } from '../inventory/engine';
 import { createEmptySalesState } from '../sales/engine';
+import { createEmptyAgendaState } from '../agenda/engine';
 import type { State } from './types';
 import { createEmptyCashState } from './cash';
 
@@ -24,5 +25,6 @@ export function createEmptyState(): State {
     inventory: createEmptyInventoryState(),
     debtModule: createEmptyDebtModuleState(),
     salesModule: createEmptySalesState(),
+    agenda: createEmptyAgendaState(),
   };
 }
