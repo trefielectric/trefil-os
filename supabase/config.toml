@@ -429,4 +429,4 @@ enabled = true
 entrypoint = "./functions/workforce-invite/index.js"
 # Status and the initial administrator begin before a session exists. The
 # function restricts origins; account links are revalidated by a scoped RPC.
-verify_jwt = false
+verify_jwt = true
