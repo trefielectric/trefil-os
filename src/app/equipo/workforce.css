@@ -261,6 +261,10 @@
   padding: 17px 0;
   color: var(--muted);
 }
+.workforce-section-intro {
+  color: var(--muted);
+  margin: -3px 0 16px;
+}
 .workforce-feedback {
   padding: 10px 13px;
   border: 1px solid #c8e4d5;
@@ -281,6 +285,78 @@
   list-style: none;
   padding: 0;
   margin: 0;
+}
+.workforce-roles {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.workforce-roles > li {
+  padding: 17px 0;
+  border-bottom: 1px solid var(--line);
+}
+.workforce-roles > li:last-child {
+  border-bottom: 0;
+}
+.workforce-role-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+.workforce-role-heading p,
+.workforce-roles small {
+  color: var(--muted);
+  margin-top: 4px;
+}
+.workforce-permission-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 12px 0;
+}
+.workforce-permission-summary span {
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: #edf2f9;
+  color: var(--brand-navy);
+  font-size: 12px;
+}
+.workforce-permission-groups {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.workforce-permission-groups fieldset {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 12px;
+}
+.workforce-permission-groups legend {
+  padding: 0 5px;
+  font-weight: 700;
+  color: var(--brand-navy);
+}
+.workforce-permission-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  padding: 8px 0;
+  align-items: start;
+}
+.workforce-permission-option input {
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+}
+.workforce-permission-option strong,
+.workforce-permission-option small {
+  display: block;
+}
+.workforce-permission-option small {
+  color: var(--muted);
+  margin-top: 2px;
 }
 .workforce-shifts > li,
 .workforce-tasks > li,
@@ -416,6 +492,9 @@
   .workforce-people > li {
     grid-template-columns: minmax(0, 1fr);
     gap: 8px;
+  }
+  .workforce-permission-groups {
+    grid-template-columns: 1fr;
   }
   .workforce-datebar {
     flex-wrap: wrap;
