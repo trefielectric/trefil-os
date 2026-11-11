@@ -183,6 +183,8 @@ grant execute on function public.workforce_save_person(uuid,text,text,text,text,
   public.workforce_bootstrap_admin(text,text,text,text,text), public.workforce_invite_target(uuid) to authenticated;
 do $$ begin
   if exists(select 1 from pg_roles where rolname='service_role') then
+    execute 'grant usage on schema workforce to service_role';
+    execute 'grant select on table workforce.people to service_role';
     execute 'grant execute on function workforce.bootstrap_available(), public.workforce_bootstrap_available() to service_role';
   end if;
 end $$;
