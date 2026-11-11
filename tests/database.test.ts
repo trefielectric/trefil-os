@@ -21,7 +21,7 @@ async function setup() {
   await db.exec(`
     create schema auth; create schema storage;
     create role anon; create role authenticated;
-    create table auth.users(id uuid primary key,email text);
+    create table auth.users(id uuid primary key,email text,email_confirmed_at timestamptz);
     create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
     create function auth.jwt() returns jsonb language sql stable as $$select jsonb_build_object('aal',coalesce(nullif(current_setting('request.jwt.claim.aal',true),''),'aal1'))$$;
     create table storage.objects(id uuid primary key default gen_random_uuid(),bucket_id text not null,name text not null,unique(bucket_id,name));
