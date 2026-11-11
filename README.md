@@ -71,6 +71,12 @@ Ventas reúne clientes, listas de precios, cotizaciones, OP, facturas, vendedore
 
 La factura no crea recaudo. Los pagos reportados por vendedores externos solo afectan cartera después de verificarse contra Caja. Cotizaciones, GAR y documentos anulados no crean movimientos monetarios implícitos. [Alcance de Ventas](docs/sales-module.md).
 
+## Módulo Agenda Financiera
+
+Agenda Financiera es el centro único de planificación de compromisos fijos, variables, ocasionales y de proveedores. Empieza vacío y no recibe obligaciones automáticas de otros módulos. Conserva por separado el vencimiento contractual y la fecha operativa ajustada al calendario hábil; una factura de proveedor sin fecha pactada nunca se marca vencida automáticamente.
+
+Agenda no contabiliza pagos. Solo vincula egresos confirmados y soportados en Caja, permite distribuir uno entre varias obligaciones sin exceder su valor y conserva los saldos de abonos parciales. Los cambios confirmados y cierres excepcionales requieren Gerencia/Creador y dejan expediente permanente. [Alcance de Agenda Financiera](docs/agenda-financiera-module.md).
+
 ## Recursos institucionales identificados
 
 | Recurso | Destino autorizado |
@@ -116,5 +122,6 @@ Las herramientas manuales están disponibles mediante `npm run backup`, `npm run
 - [Módulo Inventarios: alcance e informes](docs/inventory-module.md)
 - [Módulo Deudas: obligaciones, recibos y cierres](docs/deudas-module.md)
 - [Módulo Ventas: clientes, OP, facturación y externos](docs/sales-module.md)
+- [Módulo Agenda Financiera: vencimientos, pagos y expediente](docs/agenda-financiera-module.md)
 
 No se han conectado Microsoft Graph, Outlook, OneDrive ni Google Drive. La importación de documentos históricos requiere identificar su propietario y autorización específica. El repositorio contiene código y fixtures ficticios de pruebas; los secretos, respaldos y registros reales permanecen fuera de él.
