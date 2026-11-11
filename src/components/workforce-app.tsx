@@ -33,10 +33,11 @@ import {
   updateRecoveredPassword,
 } from "@/lib/supabase/auth";
 import {
-  accessRoles,
   clockLabel,
   dayLabel,
   documentIdentity,
+  hasCapability,
+  roleLabel,
   signInWithDocument,
   workforceRpc,
   WorkforceError,
@@ -438,7 +439,18 @@ export function WorkforceApp() {
   const mine = data.shifts.filter((shift) => shift.person_id === data.me.id);
   const open = mine.find((shift) => !shift.left_at);
   const tasks = data.tasks.filter((task) => task.person_id === data.me.id);
-  const managementRole = data.me.access_role !== "employee";
+  const managementRole = data.capabilities.some((permission) =>
+    [
+      "team_view",
+      "attendance_view_team",
+      "tasks_view_team",
+      "tasks_assign",
+      "tasks_cancel",
+      "people_manage",
+      "access_manage",
+      "roles_manage",
+    ].includes(permission),
+  );
   const busyDay = busy || refreshing;
   return (
     <div className="workforce-shell">
@@ -476,7 +488,7 @@ export function WorkforceApp() {
               {data.me.job_title} · {data.me.area}
             </p>
           </div>
-          <Badge tone="blue">{accessRoles[data.me.access_role]}</Badge>
+          <Badge tone="blue">{roleLabel(data.roles, data.me.access_role)}</Badge>
         </section>
         {managementRole && (
           <nav className="workforce-tabs" aria-label="Secciones de Equipo">
@@ -566,14 +578,18 @@ export function WorkforceApp() {
                           : "Llegada pendiente"}
                     </span>
                     <strong>{clockLabel(data.server_now)}</strong>
-                    <button
-                      className="button button-primary"
-                      disabled={busyDay}
-                      onClick={() => mark(open)}
-                    >
-                      {open ? <DoorOpen size={19} /> : <Plus size={19} />}
-                      {open ? "Marcar salida" : "Marcar llegada"}
-                    </button>
+                    {hasCapability(data, "attendance_mark") ? (
+                      <button
+                        className="button button-primary"
+                        disabled={busyDay}
+                        onClick={() => mark(open)}
+                      >
+                        {open ? <DoorOpen size={19} /> : <Plus size={19} />}
+                        {open ? "Marcar salida" : "Marcar llegada"}
+                      </button>
+                    ) : (
+                      <span>Tu rol permite consultar, pero no marcar asistencia.</span>
+                    )}
                   </div>
                 </>
               )}
@@ -592,6 +608,7 @@ export function WorkforceApp() {
               <TaskList
                 tasks={tasks}
                 busy={busyDay}
+                interactive={hasCapability(data, "tasks_update_own")}
                 change={(id, status) =>
                   void perform(
                     (client) =>
