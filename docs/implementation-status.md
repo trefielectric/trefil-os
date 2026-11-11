@@ -40,6 +40,12 @@ El usuario pidió continuar con el PDF de Deudas y confirmó vencimiento manual 
 
 La arquitectura mantiene `State.debts` y el libro de Caja como fuentes existentes. Los vínculos documentales y no monetarios evitan duplicar compras, pagos y cruces. El saldo histórico de ORIGEN tiene fecha de corte propia; no se presenta como si todos los pagos anteriores hubieran ocurrido dentro del sistema. La operación continúa en el navegador; no se han creado tablas remotas ni simulado usuarios institucionales. La verificación integrada y la publicación se registran de manera independiente de las 183 pruebas de Inventarios.
 
+## Ventas local: integración del Módulo 04
+
+El corte funcional de Ventas del 11 de noviembre de 2026 se incorporó como un apartado principal. Incluye clientes, listas versionadas, cotizaciones convertibles por categoría, OP directas y de servicio, TFI con guía, facturación unificada, vendedores externos con DV y cierre semanal, pagos reportados, garantías GAR, lotes, inventario disponible, conteos/cierres y el apartado de comisiones pendiente de parámetros reales.
+
+Facturar no registra cobros; los comprobantes externos no reducen cartera hasta cruzarse con un ingreso real de Caja. Cotizar no reserva inventario. TFM/TFMP esperan el estado de Producción y GAR no genera una segunda venta. El despacho crea una sola salida en el libro local de Inventarios y la DV verificada crea un solo reingreso; la factura no repite el movimiento. La sincronización remota continúa pendiente de la integración institucional. Los detalles están en [Ventas](sales-module.md).
+
 ## Qué está implementado y qué sigue pendiente
 
 La web conserva las funciones para movimientos equilibrados, aprobaciones independientes, reversos, cuentas, conciliaciones, obligaciones, pagos separados entre capital e interés, simulaciones, alertas y auditoría. Sus listas empiezan vacías. El perfil local **no es autenticación ni autorización institucional** y no sustituye a las personas distintas que exige una aprobación empresarial. Cualquier dato del navegador puede ser editado por su usuario y nunca debe usarse como autoridad empresarial.
