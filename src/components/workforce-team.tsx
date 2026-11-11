@@ -2,6 +2,7 @@ import { useRef, useState, type FormEvent } from "react";
 import { ClipboardList, Clock, Link2, Pencil, Plus, Users } from "lucide-react";
 import {
   accessRoles,
+  documentIdentity,
   workforceRpc,
   WorkforceError,
   type DailyTask,
@@ -54,15 +55,13 @@ export function TeamManagement({
         const { data, error } = await client.functions.invoke<{ link: string }>(
           "workforce-invite",
           {
-            body: { personId: person.id },
+            body: { action: "link", personId: person.id },
           },
         );
         if (error || !data?.link) {
           const details = await error?.context?.json?.().catch(() => null);
           throw new WorkforceError(
-            details?.code === "existing_user"
-              ? "Ese correo ya tiene una cuenta. Pide a la persona que inicie sesión con su contraseña."
-              : "No pudimos generar la invitación. Revisa que el alta esté activa e intenta de nuevo.",
+            "No pudimos generar el enlace. Revisa que el alta esté activa e intenta de nuevo.",
           );
         }
         setInvite({ name: person.full_name, link: data.link });
@@ -167,7 +166,7 @@ export function TeamManagement({
                     <p>
                       {person.job_title} · {person.area}
                     </p>
-                    {person.email && <small>{person.email}</small>}
+                    {person.identifier_last_four && <small>Cédula terminada en {person.identifier_last_four}</small>}
                     {person.supervisor_id &&
                       names.has(person.supervisor_id) && (
                         <small>
@@ -195,13 +194,13 @@ export function TeamManagement({
                   </div>
                   {admin && (
                     <div className="workforce-actions">
-                      {person.active && !person.registered && (
+                      {person.active && (
                         <button
                           className="button button-secondary"
                           onClick={() => void generateInvite(person)}
                           disabled={busy}
                         >
-                          <Link2 size={16} /> Crear invitación
+                          <Link2 size={16} /> {person.registered ? "Restablecer acceso" : "Crear acceso"}
                         </button>
                       )}
                       <button
@@ -350,9 +349,17 @@ function PersonForm({
     const fields = new FormData(event.currentTarget);
     void perform(
       async (client) => {
+        const documentNumber = String(fields.get("document") ?? "");
+        const identity = documentNumber
+          ? await documentIdentity(documentNumber)
+          : person?.identifier_hash && person.identifier_last_four
+            ? { hash: person.identifier_hash, lastFour: person.identifier_last_four }
+            : null;
+        if (!identity) throw new WorkforceError("Introduce el número de cédula.");
         await workforceRpc(client, "workforce_save_person", {
           p_id: (requestId.current ??= crypto.randomUUID()),
-          p_email: fields.get("email"),
+          p_identifier_hash: identity.hash,
+          p_identifier_last_four: identity.lastFour,
           p_name: fields.get("name"),
           p_title: fields.get("title"),
           p_area: fields.get("area"),
@@ -381,14 +388,12 @@ function PersonForm({
             defaultValue={person?.full_name}
           />
         </Field>
-        <Field label="Correo de trabajo">
+        <Field label="Número de cédula" hint={person ? `Actual: •••• ${person.identifier_last_four ?? ""}. Déjalo vacío para conservarla.` : "No se guardará el número completo."}>
           <input
-            name="email"
-            type="email"
-            required
-            maxLength={254}
-            readOnly={person?.registered}
-            defaultValue={person?.email ?? ""}
+            name="document"
+            inputMode="numeric"
+            required={!person}
+            disabled={person?.registered}
           />
         </Field>
         <Field label="Cargo en la empresa">

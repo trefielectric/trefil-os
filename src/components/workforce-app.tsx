@@ -29,8 +29,6 @@ import {
 } from "@/lib/supabase/client";
 import {
   authErrorMessage,
-  requestRecovery,
-  signIn,
   signOut,
   updateRecoveredPassword,
 } from "@/lib/supabase/auth";
@@ -38,6 +36,8 @@ import {
   accessRoles,
   clockLabel,
   dayLabel,
+  documentIdentity,
+  signInWithDocument,
   workforceRpc,
   WorkforceError,
   type Shift,
@@ -50,9 +50,9 @@ import { ShiftList, TaskList } from "./workforce-lists";
 
 type Screen =
   | "loading"
+  | "setup"
   | "signin"
   | "activation"
-  | "recovery"
   | "blocked"
   | "day";
 const activationKey = "trefil-os:workforce:activate";
@@ -79,6 +79,8 @@ export function WorkforceApp() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const invitation = useRef<string | null>(null);
+  const activationType = useRef<"invite" | "recovery">("invite");
+  const bootstrapChecked = useRef(false);
   const version = useRef(0);
   const locked = useRef(false);
   const arrival = useRef<string | null>(null);
@@ -119,7 +121,8 @@ export function WorkforceApp() {
       return;
     }
     const fragment = new URLSearchParams(window.location.hash.slice(1));
-    invitation.current = fragment.get("invitacion");
+    invitation.current = fragment.get("activacion");
+    activationType.current = fragment.get("tipo") === "recovery" ? "recovery" : "invite";
     let timer: ReturnType<typeof setTimeout> | undefined;
     const {
       data: { subscription },
@@ -140,8 +143,14 @@ export function WorkforceApp() {
           setScreen("activation");
         } else if (session) {
           void refresh.current(client, requestedDay.current);
+        } else if (!bootstrapChecked.current) {
+          bootstrapChecked.current = true;
+          void client.functions
+            .invoke<{ available: boolean }>("workforce-invite", { body: { action: "status" } })
+            .then(({ data }) => setScreen(data?.available ? "setup" : "signin"))
+            .catch(() => setScreen("signin"));
         } else {
-          setScreen((current) => (current === "recovery" ? current : "signin"));
+          setScreen("signin");
         }
       }, 0);
     });
@@ -201,15 +210,27 @@ export function WorkforceApp() {
     event.preventDefault();
     const form = event.currentTarget;
     const fields = new FormData(form);
-    const email = String(fields.get("email") ?? "");
+    const documentNumber = String(fields.get("document") ?? "");
     const password = String(fields.get("password") ?? "");
     void perform(
       async (client) => {
-        if (screen === "recovery") {
-          await requestRecovery(client, email);
-          setNotice(
-            "Si el correo admite recuperación, recibirás un enlace. Ábrelo en este mismo navegador.",
-          );
+        if (screen === "setup") {
+          if (password !== fields.get("confirm"))
+            throw new WorkforceError("Las contraseñas no coinciden.");
+          const identity = await documentIdentity(documentNumber);
+          const { data: created, error: setupError } = await client.functions.invoke<{
+            accessToken: string; refreshToken: string;
+          }>("workforce-invite", { body: {
+            action: "bootstrap", identifierHash: identity.hash,
+            identifierLastFour: identity.lastFour, password,
+            name: fields.get("name"), title: fields.get("title"), area: fields.get("area"),
+          } });
+          if (setupError || !created?.accessToken || !created.refreshToken)
+            throw new WorkforceError("No pudimos crear la cuenta administradora. Revisa los datos o vuelve a cargar.");
+          const { error: sessionError } = await client.auth.setSession({
+            access_token: created.accessToken, refresh_token: created.refreshToken,
+          });
+          if (sessionError) throw new WorkforceError("La cuenta se creó, pero no pudimos iniciar la sesión.");
         } else if (screen === "activation") {
           if (password !== fields.get("confirm"))
             throw new WorkforceError("Las contraseñas no coinciden.");
@@ -218,7 +239,7 @@ export function WorkforceApp() {
             const { data: verified, error: activationError } =
               await client.auth.verifyOtp({
                 token_hash: token,
-                type: "invite",
+                type: activationType.current,
               });
             if (activationError || !verified.user)
               throw new WorkforceError(
@@ -232,7 +253,7 @@ export function WorkforceApp() {
           sessionStorage.removeItem(activationKey);
           await load(client, null);
         } else {
-          await signIn(client, email, password);
+          await signInWithDocument(client, documentNumber, password);
         }
         form.reset();
       },
@@ -274,7 +295,7 @@ export function WorkforceApp() {
 
   if (!configured || screen !== "day" || !data) {
     const activation = screen === "activation";
-    const recovery = screen === "recovery";
+    const setup = screen === "setup";
     return (
       <div className="workforce-shell workforce-access">
         <aside className="workforce-access-brand">
@@ -322,42 +343,45 @@ export function WorkforceApp() {
               <h2>
                 {activation
                   ? "Activa tu cuenta"
-                  : recovery
-                    ? "Recupera tu acceso"
+                  : setup
+                    ? "Crea la cuenta administradora"
                     : "Inicia sesión"}
               </h2>
               <p>
                 {activation
                   ? "Crea una contraseña para tu cuenta de Equipo."
-                  : recovery
-                    ? "Usa el correo registrado en tu cuenta."
-                    : "Usa tu correo de trabajo y la contraseña que definiste al activar tu cuenta."}
+                  : setup
+                    ? "Esta primera cuenta podrá crear personas, asignar roles y administrar accesos desde la plataforma."
+                    : "Usa tu número de cédula y la contraseña de Equipo."}
               </p>
               <form onSubmit={submitAccess} className="workforce-form">
+                {setup && <>
+                  <Field label="Nombre completo"><input name="name" minLength={2} maxLength={120} required /></Field>
+                  <Field label="Cargo"><input name="title" minLength={2} maxLength={120} required /></Field>
+                  <Field label="Área"><input name="area" minLength={2} maxLength={120} required /></Field>
+                </>}
                 {!activation && (
-                  <Field label="Correo de trabajo">
+                  <Field label="Número de cédula" hint="La plataforma no guardará el número completo.">
                     <input
-                      name="email"
-                      type="email"
+                      name="document"
+                      inputMode="numeric"
                       autoComplete="username"
                       required
                     />
                   </Field>
                 )}
-                {!recovery && (
-                  <Field label={activation ? "Nueva contraseña" : "Contraseña"}>
+                <Field label={activation || setup ? "Nueva contraseña" : "Contraseña"}>
                     <input
                       name="password"
                       type="password"
                       autoComplete={
-                        activation ? "new-password" : "current-password"
+                        activation || setup ? "new-password" : "current-password"
                       }
-                      minLength={activation ? 12 : undefined}
+                      minLength={activation || setup ? 12 : undefined}
                       required
                     />
                   </Field>
-                )}
-                {activation && (
+                {(activation || setup) && (
                   <Field
                     label="Repetir contraseña"
                     hint="Mínimo 12 caracteres."
@@ -385,26 +409,12 @@ export function WorkforceApp() {
                     ? "Procesando…"
                     : activation
                       ? "Activar mi cuenta"
-                      : recovery
-                        ? "Enviar enlace de recuperación"
+                      : setup
+                        ? "Crear administración"
                         : "Iniciar sesión"}
                 </button>
               </form>
-              {!activation && (
-                <button
-                  className="text-button"
-                  disabled={busy}
-                  onClick={() => {
-                    setError("");
-                    setNotice("");
-                    setScreen(recovery ? "signin" : "recovery");
-                  }}
-                >
-                  {recovery
-                    ? "Volver al inicio de sesión"
-                    : "Olvidé mi contraseña"}
-                </button>
-              )}
+              {!activation && !setup && <p className="workforce-help">Si olvidaste tu contraseña, solicita al administrador un enlace de recuperación desde Personas.</p>}
             </>
           )}
           {error && (
