@@ -1,3 +1,4 @@
+import { getDebtCalendar } from '@/lib/debts/engine';
 import { add, fromCents, toCents, buildAmortization, getAccountBalance, getUpcomingObligations, todayBogota, getCashReport } from '@/lib/finance';
 import type { State, Transaction, TransactionKind, Money, Actor, Debt, AmortizationRow } from '@/lib/finance';
 
@@ -26,13 +27,11 @@ export function periodTotals(state:State,location:string,period:string,cutoff=DE
   for(const tx of txs) {let kind=tx.kind;if(kind==='reversal')kind=state.transactions.find(t=>t.id===tx.reversalOf)?.kind??kind;const d=cashDelta(state,tx);if(kind==='income')income+=d;else if(['expense','salary','reimbursement'].includes(kind))expense-=d;}
   return {income:fromCents(income),expenses:fromCents(expense),net:fromCents(income-expense),available:add(...visibleAccounts(state,location).map(a=>getAccountBalance(state,a.id,asOf)))};
 }
-export interface Obligation {debt:Debt;row:AmortizationRow;remaining:Money}
+export interface Obligation {debt:Debt;row:Pick<AmortizationRow,'period'|'date'>;remaining:Money}
 export function obligations(state:State,location='all',cutoff=DEMO_DATE):Obligation[] {
-  const schedules=new Map(state.debts.map(debt=>[debt.id,buildAmortization(debt)]));
   return getUpcomingObligations(state,cutoff).flatMap(item=>{
     const debt=state.debts.find(row=>row.id===item.debtId);
-    const row=debt?.kind==='supplier'?{period:1,date:item.date,openingBalance:debt.principal,payment:debt.principal,interest:'0.00',principal:debt.principal,extraPayment:'0.00',balance:'0.00',monthlyRate:'0.00',projected:true as const}:schedules.get(item.debtId)?.find(row=>row.period===item.period);
-    return debt&&row&&(location==='all'||debt.locationId===location)?[{debt,row,remaining:item.amount}]:[];
+    return debt&&(location==='all'||debt.locationId===location)?[{debt,row:{period:item.period,date:item.date},remaining:item.amount}]:[];
   });
 }
 
@@ -51,10 +50,10 @@ export function cashSeries(state:State,location:string,period:string,cutoff=DEMO
   let runningNet=0n;
   const balances:Money[]=[fromCents(runningBalance)];
   const net:Money[]=['0.00'];
-  const upcoming=obligations(state,location,cutoff).filter(item=>item.row.date>cutoff);
+  const upcoming=[...obligations(state,location,cutoff).map(item=>({date:item.row.date,remaining:item.remaining})),...getDebtCalendar(state,cutoff,{category:'recurring',...(location!=='all'?{locationId:location}:{})}).map(item=>({date:item.dueDate,remaining:item.remaining}))].filter(item=>item.date>cutoff);
   // For a future month, carry the real balance at cutoff minus preceding projected dues.
   if(actualThrough===0&&period>cutoff.slice(0,7)){
-    runningBalance=posted.reduce((total,transaction)=>total+delta(transaction),0n)-upcoming.filter(item=>item.row.date<monthStart).reduce((total,item)=>total+toCents(item.remaining),0n);
+    runningBalance=posted.reduce((total,transaction)=>total+delta(transaction),0n)-upcoming.filter(item=>item.date<monthStart).reduce((total,item)=>total+toCents(item.remaining),0n);
     balances[0]=fromCents(runningBalance);
   }
   for(let day=1;day<=lastDay;day++){
@@ -64,7 +63,7 @@ export function cashSeries(state:State,location:string,period:string,cutoff=DEMO
       runningBalance+=daily.filter(transaction=>!(day===1&&transaction.kind==='opening')).reduce((total,transaction)=>total+delta(transaction),0n);
       runningNet+=daily.filter(transaction=>!isOpening(transaction)).reduce((total,transaction)=>total+delta(transaction),0n);
     }else{
-      const projected=-upcoming.filter(item=>item.row.date===date).reduce((total,item)=>total+toCents(item.remaining),0n);
+      const projected=-upcoming.filter(item=>item.date===date).reduce((total,item)=>total+toCents(item.remaining),0n);
       runningBalance+=projected;runningNet+=projected;
     }
     balances.push(fromCents(runningBalance));net.push(fromCents(runningNet));
