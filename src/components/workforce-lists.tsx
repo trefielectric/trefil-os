@@ -66,6 +66,8 @@ export function TaskList({
   names,
   manage,
   edit,
+  interactive = true,
+  canCancel = true,
 }: {
   tasks: DailyTask[];
   busy: boolean;
@@ -73,6 +75,8 @@ export function TaskList({
   names?: ReadonlyMap<string, DirectoryPerson>;
   manage?: boolean;
   edit?: (task: DailyTask) => void;
+  interactive?: boolean;
+  canCancel?: boolean;
 }) {
   if (!tasks.length)
     return (
@@ -102,7 +106,7 @@ export function TaskList({
             {task.details && (
               <p className="workforce-task-details">{task.details}</p>
             )}
-            {open && (
+            {open && interactive && (
               <div className="workforce-actions">
                 {manage ? (
                   <>
@@ -115,13 +119,15 @@ export function TaskList({
                         Editar tarea
                       </button>
                     )}
-                    <button
-                      className="text-button"
-                      onClick={() => change(task.id, "cancelled")}
-                      disabled={busy}
-                    >
-                      Cancelar tarea
-                    </button>
+                    {canCancel && (
+                      <button
+                        className="text-button"
+                        onClick={() => change(task.id, "cancelled")}
+                        disabled={busy}
+                      >
+                        Cancelar tarea
+                      </button>
+                    )}
                   </>
                 ) : (
                   <>
