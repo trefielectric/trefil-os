@@ -10,20 +10,21 @@ La base de datos asigna las marcas de tiempo. Solo hay una jornada abierta por p
 
 ## Habilitar el primer administrador
 
-1. Aplica la migración `20261111140836_workforce.sql` en el proyecto institucional. El módulo empieza vacío.
-2. En Supabase Auth, el operador crea la identidad verificada del primer administrador. El titular define y guarda su contraseña personalmente. Mantén desactivado el registro público.
-3. Ejecuta `supabase/operations/bootstrap-workforce-admin.sql` con el correo, nombre, cargo y área confirmados. La operación vincula una identidad existente y no otorga permisos financieros.
-4. Inicia sesión en `/equipo/` y usa **Verificar para gestionar** para configurar o verificar TOTP. Regresa a Equipo, abre **Gestionar equipo** y entra a **Personas**.
+1. Aplica las migraciones y despliega `workforce-invite`. El módulo empieza vacío.
+2. Abre `/equipo/`. La pantalla inicial permite registrar cédula, nombre, cargo, área y contraseña sin entrar al panel de Supabase.
+3. Usa **Verificar para gestionar** para configurar o verificar TOTP. Regresa a Equipo, abre **Gestionar equipo** y entra a **Personas**.
+
+La cédula completa se normaliza y convierte en una huella SHA-256 en el navegador. Supabase recibe la huella y conserva únicamente sus últimos cuatro dígitos para identificación visual; la cédula completa no se almacena.
 
 ## Invitar personas y programar tareas
 
-Crea la ficha con nombre, correo de trabajo, cargo, área, permiso y coordinador si corresponde. Pulsa **Crear invitación** y comparte el enlace de un solo uso por un canal privado. Cada colaborador define su propia contraseña. Si ya tiene cuenta, entra con su contraseña existente. La primera sesión con correo confirmado vincula la identidad a su ficha.
+Crea la ficha con nombre, cédula, cargo, área, permiso y coordinador si corresponde. Pulsa **Crear acceso** y comparte el enlace de un solo uso por un canal privado. Cada colaborador define su propia contraseña y después ingresa con cédula. Para una cuenta vinculada, **Restablecer acceso** emite un enlace de recuperación desde la misma plataforma.
 
 En **Plan del día**, elige fecha y persona. **Programar tarea** permite definir un título, instrucciones y una hora límite opcional. Puedes editar una tarea pendiente o cancelar una tarea abierta. Las personas pueden marcar sus tareas como en curso y completadas.
 
 ## Conexión
 
 - El frontend usa las variables públicas institucionales `NEXT_PUBLIC_SUPABASE_URL` y `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`.
-- Despliega `workforce-invite` en el proyecto institucional. Su RPC comprueba la firma de la sesión, el doble factor y el rol activo antes de emitir un enlace. La clave privada permanece en el entorno de Supabase.
-- La función admite el dominio de la vista previa y los orígenes adicionales explícitos de `WORKFORCE_APP_ORIGINS` si se configura otro dominio. La recuperación de contraseña requiere un remitente SMTP apto para los destinatarios y el redireccionamiento permitido a `/acceso/?recuperacion=1`.
+- Despliega `workforce-invite` en el proyecto institucional. La creación inicial está limitada a un único administrador mediante bloqueo transaccional. Para los demás enlaces, su RPC comprueba la firma de la sesión, el doble factor y el rol activo. La clave privada permanece en el entorno de Supabase.
+- La función admite el dominio de la vista previa y los orígenes adicionales explícitos de `WORKFORCE_APP_ORIGINS` si se configura otro dominio. Los enlaces de activación y recuperación se entregan directamente al administrador y no dependen de correo SMTP.
 - Los datos se guardan en Supabase. El esquema `workforce` queda fuera de la lista de esquemas expuestos y los permisos no usan metadatos editables ni los perfiles locales de Finanzas.
