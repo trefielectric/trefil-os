@@ -1,12 +1,15 @@
 import { useRef, useState, type FormEvent } from "react";
-import { ClipboardList, Clock, Link2, Pencil, Plus, Users } from "lucide-react";
+import { ClipboardList, Clock, Link2, Pencil, Plus, ShieldCheck, Users } from "lucide-react";
 import {
-  accessRoles,
   documentIdentity,
+  hasCapability,
+  roleLabel,
   workforceRpc,
   WorkforceError,
   type DailyTask,
   type DirectoryPerson,
+  type PermissionDefinition,
+  type RoleDefinition,
   type WorkforceDay,
 } from "@/lib/workforce";
 import { Badge, Field } from "./ui";
@@ -22,7 +25,9 @@ export function TeamManagement({
   busy: boolean;
   perform: Perform;
 }) {
-  const [section, setSection] = useState<"schedule" | "directory">("schedule");
+  const [section, setSection] = useState<"schedule" | "directory" | "roles">(
+    () => hasCapability(snapshot, "roles_manage") && !hasCapability(snapshot, "team_view") ? "roles" : "schedule",
+  );
   const [filter, setFilter] = useState("");
   const [personForm, setPersonForm] = useState<DirectoryPerson | "new" | null>(
     null,
@@ -34,7 +39,14 @@ export function TeamManagement({
   const [copied, setCopied] = useState(false);
   const people = snapshot.people;
   const activePeople = people.filter((person) => person.active);
-  const admin = snapshot.me.access_role === "admin";
+  const canPeople = hasCapability(snapshot, "people_manage");
+  const canAccess = hasCapability(snapshot, "access_manage");
+  const canRoles = hasCapability(snapshot, "roles_manage");
+  const canAssign = hasCapability(snapshot, "tasks_assign");
+  const canCancel = hasCapability(snapshot, "tasks_cancel");
+  const viewAttendance = hasCapability(snapshot, "attendance_view_team");
+  const viewTasks = hasCapability(snapshot, "tasks_view_team");
+  const viewDirectory = hasCapability(snapshot, "team_view") || canPeople || canAccess;
   const names = new Map(people.map((person) => [person.id, person]));
   const teamTasks = snapshot.tasks.filter(
     (task) =>
@@ -77,25 +89,39 @@ export function TeamManagement({
         className="workforce-tabs workforce-subtabs"
         aria-label="Gestión de equipo"
       >
-        <button
-          aria-current={section === "schedule" ? "page" : undefined}
-          onClick={() => setSection("schedule")}
-        >
-          <ClipboardList size={16} /> Plan del día
-        </button>
-        <button
-          aria-current={section === "directory" ? "page" : undefined}
-          onClick={() => setSection("directory")}
-        >
-          <Users size={16} /> Personas
-        </button>
+        {(viewAttendance || viewTasks || canAssign || canCancel) && (
+          <button
+            aria-current={section === "schedule" ? "page" : undefined}
+            onClick={() => setSection("schedule")}
+          >
+            <ClipboardList size={16} /> Plan del día
+          </button>
+        )}
+        {viewDirectory && (
+          <button
+            aria-current={section === "directory" ? "page" : undefined}
+            onClick={() => setSection("directory")}
+          >
+            <Users size={16} /> Personas
+          </button>
+        )}
+        {canRoles && (
+          <button
+            aria-current={section === "roles" ? "page" : undefined}
+            onClick={() => setSection("roles")}
+          >
+            <ShieldCheck size={16} /> Funciones y roles
+          </button>
+        )}
       </nav>
-      {section === "directory" ? (
+      {section === "roles" && canRoles ? (
+        <RolesManager snapshot={snapshot} busy={busy} perform={perform} />
+      ) : section === "directory" ? (
         <section className="workforce-card">
           <div className="workforce-card-heading">
             <Users size={20} />
             <h2>Personas</h2>
-            {admin && (
+            {canPeople && (
               <button
                 className="button button-primary"
                 disabled={busy}
@@ -108,11 +134,12 @@ export function TeamManagement({
               </button>
             )}
           </div>
-          {personForm && admin && (
+          {personForm && canPeople && (
             <PersonForm
               key={personForm === "new" ? personForm : personForm.id}
               person={personForm === "new" ? undefined : personForm}
               people={people}
+              roles={snapshot.roles}
               actorId={snapshot.me.id}
               busy={busy}
               perform={perform}
@@ -175,7 +202,7 @@ export function TeamManagement({
                       )}
                   </div>
                   <div className="workforce-people-access">
-                    <Badge tone="blue">{accessRoles[person.access_role]}</Badge>
+                    <Badge tone="blue">{roleLabel(snapshot.roles, person.access_role)}</Badge>
                     <Badge
                       tone={
                         !person.active
@@ -192,9 +219,9 @@ export function TeamManagement({
                           : "Pendiente de ingreso"}
                     </Badge>
                   </div>
-                  {admin && (
+                  {(canPeople || canAccess) && (
                     <div className="workforce-actions">
-                      {person.active && (
+                      {canAccess && person.active && (
                         <button
                           className="button button-secondary"
                           onClick={() => void generateInvite(person)}
@@ -203,16 +230,18 @@ export function TeamManagement({
                           <Link2 size={16} /> {person.registered ? "Restablecer acceso" : "Crear acceso"}
                         </button>
                       )}
-                      <button
-                        className="button button-secondary"
-                        onClick={() => {
-                          setPersonForm(person);
-                          setInvite(null);
-                        }}
-                        disabled={busy}
-                      >
-                        <Pencil size={15} /> Editar
-                      </button>
+                      {canPeople && (
+                        <button
+                          className="button button-secondary"
+                          onClick={() => {
+                            setPersonForm(person);
+                            setInvite(null);
+                          }}
+                          disabled={busy}
+                        >
+                          <Pencil size={15} /> Editar
+                        </button>
+                      )}
                     </div>
                   )}
                 </li>
@@ -242,7 +271,7 @@ export function TeamManagement({
             </Field>
           </div>
           <div className="workforce-layout">
-            <section className="workforce-card">
+            {viewAttendance && <section className="workforce-card">
               <div className="workforce-card-heading">
                 <Clock size={20} />
                 <h2>Asistencia del equipo</h2>
@@ -270,20 +299,22 @@ export function TeamManagement({
                   No hay personas en esta selección.
                 </p>
               )}
-            </section>
-            <section className="workforce-card">
+            </section>}
+            {viewTasks && <section className="workforce-card">
               <div className="workforce-card-heading">
                 <ClipboardList size={20} />
                 <h2>Tareas del equipo</h2>
-                <button
-                  className="button button-primary"
-                  disabled={busy || !activePeople.length}
-                  onClick={() => setTaskForm("new")}
-                >
-                  <Plus size={17} /> Programar tarea
-                </button>
+                {canAssign && (
+                  <button
+                    className="button button-primary"
+                    disabled={busy || !activePeople.length}
+                    onClick={() => setTaskForm("new")}
+                  >
+                    <Plus size={17} /> Programar tarea
+                  </button>
+                )}
               </div>
-              {taskForm && (
+              {taskForm && canAssign && (
                 <TaskForm
                   key={taskForm === "new" ? taskForm : taskForm.id}
                   task={taskForm === "new" ? undefined : taskForm}
@@ -299,8 +330,10 @@ export function TeamManagement({
                 tasks={teamTasks}
                 busy={busy}
                 manage
+                interactive={canCancel || canAssign}
+                canCancel={canCancel}
                 names={names}
-                edit={setTaskForm}
+                edit={canAssign ? setTaskForm : undefined}
                 change={(id, status) =>
                   void perform(
                     (client) =>
@@ -312,7 +345,7 @@ export function TeamManagement({
                   )
                 }
               />
-            </section>
+            </section>}
           </div>
         </>
       )}
@@ -320,9 +353,168 @@ export function TeamManagement({
   );
 }
 
+function RolesManager({
+  snapshot,
+  busy,
+  perform,
+}: {
+  snapshot: WorkforceDay;
+  busy: boolean;
+  perform: Perform;
+}) {
+  const [form, setForm] = useState<RoleDefinition | "new" | null>(null);
+  const permissionNames = new Map(
+    snapshot.permissions.map((permission) => [permission.code, permission.name]),
+  );
+  return (
+    <section className="workforce-card">
+      <div className="workforce-card-heading">
+        <ShieldCheck size={20} />
+        <h2>Funciones y roles</h2>
+        <button
+          className="button button-primary"
+          disabled={busy}
+          onClick={() => setForm("new")}
+        >
+          <Plus size={17} /> Nuevo rol
+        </button>
+      </div>
+      <p className="workforce-section-intro">
+        Define qué puede hacer cada rol y qué información puede consultar. Los
+        permisos se aplican al volver a cargar Equipo.
+      </p>
+      {form && (
+        <RoleForm
+          key={form === "new" ? form : form.code}
+          role={form === "new" ? undefined : form}
+          permissions={snapshot.permissions}
+          busy={busy}
+          perform={perform}
+          close={() => setForm(null)}
+        />
+      )}
+      <ul className="workforce-roles">
+        {snapshot.roles.map((role) => (
+          <li key={role.code}>
+            <div className="workforce-role-heading">
+              <div>
+                <strong>{role.name}</strong>
+                <p>{role.description}</p>
+              </div>
+              <div className="workforce-people-access">
+                {role.system && <Badge tone="blue">Rol base</Badge>}
+                <Badge tone={role.active ? "green" : "neutral"}>
+                  {role.active ? "Activo" : "Inactivo"}
+                </Badge>
+              </div>
+            </div>
+            <div className="workforce-permission-summary">
+              {role.permissions.length ? role.permissions.map((permission) => (
+                <span key={permission}>{permissionNames.get(permission) ?? permission}</span>
+              )) : <span>Sin funciones asignadas</span>}
+            </div>
+            {role.code === "admin" ? (
+              <small>Protegido: conserva todas las funciones para evitar un bloqueo administrativo.</small>
+            ) : (
+              <button
+                className="button button-secondary"
+                disabled={busy}
+                onClick={() => setForm(role)}
+              >
+                <Pencil size={15} /> Editar funciones
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function RoleForm({
+  role,
+  permissions,
+  busy,
+  perform,
+  close,
+}: {
+  role?: RoleDefinition;
+  permissions: PermissionDefinition[];
+  busy: boolean;
+  perform: Perform;
+  close: () => void;
+}) {
+  const code = useRef(
+    role?.code ?? `rol_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`,
+  );
+  const groups = [
+    ["personal", "Funciones personales"],
+    ["team", "Equipo y coordinación"],
+    ["administration", "Administración y acceso a información"],
+  ] as const;
+
+  function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const fields = new FormData(event.currentTarget);
+    void perform(
+      async (client) => {
+        await workforceRpc(client, "workforce_save_role", {
+          p_code: code.current,
+          p_name: fields.get("name"),
+          p_description: fields.get("description"),
+          p_permissions: fields.getAll("permission"),
+          p_active: role?.system || fields.get("active") === "on",
+        });
+        close();
+      },
+      role ? "Rol y funciones actualizados." : "Rol creado.",
+    );
+  }
+
+  return (
+    <form className="workforce-inline-form" onSubmit={save}>
+      <h3>{role ? `Editar ${role.name}` : "Nuevo rol"}</h3>
+      <div className="workforce-form-grid">
+        <Field label="Nombre del rol">
+          <input name="name" required minLength={2} maxLength={60} defaultValue={role?.name} placeholder="Ej. Auxiliar de bodega" />
+        </Field>
+        <Field label="Descripción">
+          <input name="description" required minLength={2} maxLength={240} defaultValue={role?.description} placeholder="Responsabilidad principal del rol" />
+        </Field>
+      </div>
+      <div className="workforce-permission-groups">
+        {groups.map(([category, title]) => (
+          <fieldset key={category}>
+            <legend>{title}</legend>
+            {permissions.filter((permission) => permission.category === category).map((permission) => (
+              <label key={permission.code} className="workforce-permission-option">
+                <input
+                  type="checkbox"
+                  name="permission"
+                  value={permission.code}
+                  defaultChecked={role?.permissions.includes(permission.code)}
+                />
+                <span><strong>{permission.name}</strong><small>{permission.description}</small></span>
+              </label>
+            ))}
+          </fieldset>
+        ))}
+      </div>
+      <label className="workforce-checkbox">
+        <input name="active" type="checkbox" defaultChecked={role?.active ?? true} disabled={role?.system} /> Rol disponible para asignar
+      </label>
+      <div className="workforce-actions">
+        <button className="button button-primary" type="submit" disabled={busy}>Guardar rol</button>
+        <button className="button button-secondary" type="button" onClick={close} disabled={busy}>Cancelar</button>
+      </div>
+    </form>
+  );
+}
+
 function PersonForm({
   person,
   people,
+  roles,
   actorId,
   busy,
   perform,
@@ -330,6 +522,7 @@ function PersonForm({
 }: {
   person?: DirectoryPerson;
   people: DirectoryPerson[];
+  roles: RoleDefinition[];
   actorId: string;
   busy: boolean;
   perform: Perform;
@@ -337,11 +530,12 @@ function PersonForm({
 }) {
   const requestId = useRef(person?.id);
   const self = person?.id === actorId;
+  const roleMap = new Map(roles.map((role) => [role.code, role]));
   const coordinators = people.filter(
     (candidate) =>
       candidate.id !== person?.id &&
       candidate.active &&
-      candidate.access_role !== "employee",
+      roleMap.get(candidate.access_role)?.permissions.includes("team_view"),
   );
 
   function save(event: FormEvent<HTMLFormElement>) {
@@ -422,9 +616,9 @@ function PersonForm({
             defaultValue={person?.access_role ?? "employee"}
             disabled={self}
           >
-            {Object.entries(accessRoles).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
+            {roles.filter((role) => role.active || role.code === person?.access_role).map((role) => (
+              <option key={role.code} value={role.code}>
+                {role.name}
               </option>
             ))}
           </select>
@@ -441,9 +635,8 @@ function PersonForm({
         </Field>
       </div>
       <p>
-        El colaborador ve su jornada y sus tareas. El coordinador también
-        gestiona a sus personas asignadas. El administrador gestiona cuentas,
-        permisos y toda la operación de Equipo.
+        Las funciones de cada rol se configuran en Funciones y roles. Los
+        cambios se validan en la base de datos antes de permitir cada acción.
       </p>
       <label className="workforce-checkbox">
         <input
