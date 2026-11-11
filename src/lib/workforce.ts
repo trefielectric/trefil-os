@@ -128,16 +128,19 @@ export async function documentIdentity(documentNumber: string) {
 
 export async function signInWithDocument(
   client: SupabaseClient,
-  documentNumber: string,
+  identifier: string,
   password: string,
 ) {
-  const identity = await documentIdentity(documentNumber);
+  const normalized = identifier.trim().toLowerCase();
+  const email = normalized.includes("@")
+    ? normalized
+    : (await documentIdentity(normalized)).authEmail;
   const { error } = await client.auth.signInWithPassword({
-    email: identity.authEmail,
+    email,
     password,
   });
   if (error)
-    throw new WorkforceError("La cédula o la contraseña no son correctas.");
+    throw new WorkforceError("El correo, la cédula o la contraseña no son correctos.");
 }
 
 export async function workforceRpc<T>(
