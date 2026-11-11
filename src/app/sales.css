@@ -1,0 +1,49 @@
+.sales-module{display:grid;gap:18px;padding-bottom:48px}
+.sales-tabs{display:flex;gap:5px;overflow-x:auto;padding:5px;background:#eef2f7;border:1px solid #dce3ed;border-radius:9px;scrollbar-width:thin}
+.sales-tabs button{display:flex;align-items:center;gap:6px;min-height:34px;padding:7px 11px;border-radius:6px;color:#64758c;font-size:9px;white-space:nowrap}
+.sales-tabs button:hover{background:#fff8}
+.sales-tabs button.selected{background:#fff;color:var(--brand-navy);box-shadow:0 1px 4px #1d3d6a18;font-weight:600}
+.sales-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:-4px}
+.sales-actions-inner{margin:0}
+.sales-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.sales-metric{display:grid;gap:10px;padding:18px;background:#fff;border:1px solid var(--line);border-radius:11px;box-shadow:0 2px 5px #1d3d6a05}
+.sales-metric>span{display:flex;align-items:center;justify-content:space-between;color:#63758e;font-size:9px;font-weight:600;letter-spacing:.2px}
+.sales-metric svg{width:20px;height:20px;padding:4px;border-radius:5px;background:var(--brand-yellow-soft);color:#807210}
+.sales-metric strong{font-size:23px;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-.8px}
+.sales-metric small{color:#8a9aaf;font-size:8px}
+.sales-grid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(290px,1fr);gap:18px}
+.sales-panel{min-width:0;background:#fff;border:1px solid var(--line);border-radius:11px;overflow:hidden}
+.sales-panel>header{display:flex;justify-content:space-between;gap:12px;padding:18px 20px;border-bottom:1px solid #e9edf3}
+.sales-panel>header h2{font-size:13px}
+.sales-panel>header p{margin-top:4px;color:#8292a8;font-size:9px}
+.sales-activity{padding:5px 20px}
+.sales-activity>button{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;padding:13px 0;border-bottom:1px solid #edf0f4;text-align:left}
+.sales-activity>button:last-child{border:0}
+.sales-activity strong{display:block;font-size:10px}
+.sales-activity small{display:block;margin-top:3px;color:#8b99ac;font-size:8px}
+.sales-rules{display:grid;gap:12px;list-style:none;margin:0;padding:18px 20px;color:#596b82;font-size:9px}
+.sales-rules li{display:flex;align-items:flex-start;gap:8px}
+.sales-rules svg{width:14px;color:#60836d}
+.sales-table-wrap{overflow-x:auto}
+.sales-table{width:100%;border-collapse:collapse;font-size:9px}
+.sales-table th{padding:10px 15px;background:#f7f9fb;border-bottom:1px solid #e5eaf0;color:#7d8da3;font-size:8px;font-weight:600;text-align:left;white-space:nowrap}
+.sales-table td{padding:13px 15px;border-bottom:1px solid #e8edf2;vertical-align:top}
+.sales-table tbody tr:last-child td{border:0}
+.sales-table tbody tr:hover{background:#fbfcfd}
+.sales-table td>strong{display:block;font-size:10px}
+.sales-table td>small{display:block;margin-top:4px;color:#8393a8;line-height:1.45}
+.sales-row-actions{display:flex;gap:5px;flex-wrap:wrap}
+.sales-row-actions button,.sales-link{padding:5px 7px;border:1px solid #d7dfeb;border-radius:5px;color:#4b6485;font-size:8px;background:#fff}
+.sales-row-actions button:hover,.sales-link:hover{background:#eef3f8}
+.sales-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;padding:20px}
+.sales-form .field.full{grid-column:1/-1}
+.sales-form textarea{min-height:90px;resize:vertical}
+.sales-form-note{grid-column:1/-1;padding:12px;background:#f4f7fb;border:1px solid #dfe7f1;border-radius:7px;font-size:10px;color:#526883}
+.sales-form-actions{display:flex;justify-content:flex-end;gap:8px;grid-column:1/-1;padding-top:5px}
+.sales-panel .empty-state{min-height:230px}
+.sales-pending{display:flex;align-items:flex-start;gap:14px;margin:18px;padding:18px;background:#fffbea;border:1px solid #eee19c;border-radius:8px;color:#625c35}
+.sales-pending svg{color:#8a7b19}
+.sales-pending h3{font-size:11px}
+.sales-pending p{margin-top:6px;font-size:9px;line-height:1.6}
+@media(max-width:1050px){.sales-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.sales-grid{grid-template-columns:1fr}}
+@media(max-width:700px){.sales-stats{grid-template-columns:1fr}.sales-actions{justify-content:stretch}.sales-actions .button{flex:1}.sales-form{grid-template-columns:1fr}.sales-form .field.full,.sales-form-actions,.sales-form-note{grid-column:auto}.sales-table{min-width:720px}}
