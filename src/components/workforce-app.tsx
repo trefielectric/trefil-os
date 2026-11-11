@@ -57,6 +57,12 @@ type Screen =
   | "blocked"
   | "day";
 const activationKey = "trefil-os:workforce:activate";
+const initialAdministrator = {
+  name: "Federico Velásquez Perdomo",
+  email: "fevepe1510@gmail.com",
+  title: "Administrador general",
+  area: "Administración",
+} as const;
 export type Perform = (
   operation: (client: SupabaseClient) => Promise<void>,
   success?: string,
@@ -224,7 +230,10 @@ export function WorkforceApp() {
           }>("workforce-invite", { body: {
             action: "bootstrap", identifierHash: identity.hash,
             identifierLastFour: identity.lastFour, password,
-            name: fields.get("name"), title: fields.get("title"), area: fields.get("area"),
+            name: initialAdministrator.name,
+            email: initialAdministrator.email,
+            title: initialAdministrator.title,
+            area: initialAdministrator.area,
           } });
           if (setupError || !created?.accessToken || !created.refreshToken)
             throw new WorkforceError("No pudimos crear la cuenta administradora. Revisa los datos o vuelve a cargar.");
@@ -345,24 +354,27 @@ export function WorkforceApp() {
                 {activation
                   ? "Activa tu cuenta"
                   : setup
-                    ? "Crea la cuenta administradora"
+                    ? "Activa tu usuario de control total"
                     : "Inicia sesión"}
               </h2>
               <p>
                 {activation
                   ? "Crea una contraseña para tu cuenta de Equipo."
                   : setup
-                    ? "Esta primera cuenta podrá crear personas, asignar roles y administrar accesos desde la plataforma."
-                    : "Usa tu correo o número de cédula y la contraseña de Equipo."}
+                    ? "Tu perfil de propietario ya está reservado. Completa únicamente tu identificación de ingreso y una contraseña nueva."
+                    : "Usa tu número de cédula y la contraseña de Equipo."}
               </p>
               <form onSubmit={submitAccess} className="workforce-form">
                 {setup && <>
-                  <Field label="Nombre completo"><input name="name" minLength={2} maxLength={120} required /></Field>
-                  <Field label="Cargo"><input name="title" minLength={2} maxLength={120} required /></Field>
-                  <Field label="Área"><input name="area" minLength={2} maxLength={120} required /></Field>
+                  <section className="workforce-owner-profile" aria-label="Perfil administrador reservado">
+                    <Badge tone="blue">Control total</Badge>
+                    <strong>{initialAdministrator.name}</strong>
+                    <span>{initialAdministrator.email}</span>
+                    <small>{initialAdministrator.title} · {initialAdministrator.area}</small>
+                  </section>
                 </>}
                 {!activation && (
-                  <Field label={setup ? "Número de cédula" : "Correo o número de cédula"} hint={setup ? "La plataforma no guardará el número completo." : "El administrador inicial también puede ingresar con su correo."}>
+                  <Field label="Número de cédula" hint={setup ? "Será tu usuario de ingreso. La plataforma no guardará el número completo." : undefined}>
                     <input
                       name="document"
                       autoComplete="username"
@@ -410,7 +422,7 @@ export function WorkforceApp() {
                     : activation
                       ? "Activar mi cuenta"
                       : setup
-                        ? "Crear administración"
+                        ? "Activar mi usuario"
                         : "Iniciar sesión"}
                 </button>
               </form>

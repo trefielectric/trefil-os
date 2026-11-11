@@ -109,6 +109,26 @@
 .workforce-form > button {
   margin-top: 3px;
 }
+.workforce-owner-profile {
+  display: grid;
+  gap: 4px;
+  padding: 16px;
+  border: 1px solid #c9d7ea;
+  border-radius: 12px;
+  background: #f4f7fb;
+}
+.workforce-owner-profile .badge {
+  justify-self: start;
+  margin-bottom: 4px;
+}
+.workforce-owner-profile strong {
+  color: var(--navy);
+  font-size: 17px;
+}
+.workforce-owner-profile span,
+.workforce-owner-profile small {
+  color: var(--muted);
+}
 .workforce-header {
   background: white;
   border-bottom: 1px solid var(--line);

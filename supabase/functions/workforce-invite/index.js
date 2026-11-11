@@ -22,6 +22,12 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const hash = /^[0-9a-f]{64}$/;
 const lastFour = /^\d{4}$/;
 const emailFor = (value) => `${value}@identidad.trefielectric.internal`;
+const initialAdministrator = Object.freeze({
+  name: "Federico Velásquez Perdomo",
+  email: "fevepe1510@gmail.com",
+  title: "Administrador general",
+  area: "Administración",
+});
 
 Deno.serve(async (request) => {
   const origin = request.headers.get("Origin") ?? "";
@@ -52,7 +58,8 @@ Deno.serve(async (request) => {
     if (payload?.action === "bootstrap") {
       if (!hash.test(payload.identifierHash) || !lastFour.test(payload.identifierLastFour) ||
         typeof payload.password !== "string" || payload.password.length < 12 ||
-        ![payload.name, payload.title, payload.area].every((value) => typeof value === "string" && value.trim().length >= 2))
+        payload.name !== initialAdministrator.name || payload.email !== initialAdministrator.email ||
+        payload.title !== initialAdministrator.title || payload.area !== initialAdministrator.area)
         return respond({ code: "invalid_setup" }, 400);
       const email = emailFor(payload.identifierHash);
       const { data: created, error: createError } = await admin.auth.admin.createUser({ email, password: payload.password, email_confirm: true });
@@ -64,7 +71,9 @@ Deno.serve(async (request) => {
         const scoped = createClient(url, publishableKey, { ...options, global: { headers: { Authorization: `Bearer ${signed.session.access_token}` } } });
         const { error: bootstrapError } = await scoped.rpc("workforce_bootstrap_admin", {
           p_hash: payload.identifierHash, p_last_four: payload.identifierLastFour,
-          p_name: payload.name, p_title: payload.title, p_area: payload.area,
+          p_name: initialAdministrator.name,
+          p_title: initialAdministrator.title,
+          p_area: initialAdministrator.area,
         });
         if (bootstrapError) throw bootstrapError;
         return respond({ accessToken: signed.session.access_token, refreshToken: signed.session.refresh_token }, 201);

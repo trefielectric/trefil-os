@@ -8,6 +8,8 @@ import { ignoredBuildExitCode } from '../scripts/vercel-build-gate.mjs';
 const gate = fileURLToPath(new URL('../scripts/vercel-build-gate.mjs', import.meta.url));
 const config = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'));
 const workforceInvite = readFileSync(new URL('../supabase/functions/workforce-invite/index.js', import.meta.url), 'utf8');
+const workforceApp = readFileSync(new URL('../src/components/workforce-app.tsx', import.meta.url), 'utf8');
+const reservedOwnerMigration = readFileSync(new URL('../supabase/migrations/20261111202500_reserved_initial_administrator.sql', import.meta.url), 'utf8');
 
 test('Vercel ignore command continues production and preview, skipping other environments', () => {
   for (const environment of ['development', 'custom', '', undefined]) assert.equal(ignoredBuildExitCode(environment), 0);
@@ -52,4 +54,14 @@ test('Equipo invite endpoint accepts the exact production domains', () => {
   assert.match(workforceInvite, /https:\/\/trefil-os-git-main-administrativo914\.vercel\.app/);
   assert.match(workforceInvite, /https:\/\/project-kmpca\.vercel\.app/);
   assert.doesNotMatch(workforceInvite, /https:\/\/\*\.vercel\.app/);
+});
+
+test('the one-time Equipo setup activates the reserved control-total owner', () => {
+  for (const source of [workforceInvite, workforceApp, reservedOwnerMigration]) {
+    assert.match(source, /Federico Velásquez Perdomo/);
+    assert.match(source, /fevepe1510@gmail\.com/);
+    assert.match(source, /Administrador general/);
+  }
+  assert.match(workforceApp, /Activa tu usuario de control total/);
+  assert.doesNotMatch(workforceApp, /Crea la cuenta administradora/);
 });
