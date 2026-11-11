@@ -55,6 +55,16 @@ Producción y Ventas se referencian mediante documentos; no se han implementado 
 
 Los importes se transportan como cadenas decimales y se calculan con centavos `BigInt`; PostgreSQL usa `numeric(18,2)`. Las tasas del simulador son porcentajes **mensuales vencidos**, con redondeo a centavos por período. El plan contractual y las proyecciones no representan pagos realizados ni una liquidación diaria del acreedor. Los anticipos y préstamos recibidos se distinguen de los ingresos y gastos operativos; el flujo de caja sí refleja sus entradas o salidas efectivas.
 
+## Módulo Deudas
+
+El Módulo 03 organiza entidades financieras, inversionistas, proveedores y pagos recurrentes. Cada ficha conserva su documento de origen y distingue capital original, saldo al corte histórico y fecha de ese corte. Los préstamos nuevos se preparan como expedientes sin saldo desembolsado hasta vincular el dinero real recibido desde Caja. El ORIGEN histórico bancario y las renegociaciones reservadas generan solicitudes pendientes de autorización institucional.
+
+Los planes oficiales se introducen desde sus documentos, con cuotas y versiones conservadas; el simulador permanece separado. Los pagos reales distinguen capital, interés, seguro, comisiones y mora. Vincular un gasto ya contabilizado no genera otro egreso, y su aplicación a una cuota tampoco vuelve a reducir capital.
+
+El directorio único de proveedores permite facturas con vencimiento manual. Una compra a crédito aumenta su deuda y recibe materiales en Inventarios sin salida de Caja. El despacho de una devolución conserva la deuda hasta la aceptación documentada; solo el importe reconocido reduce el saldo. Los precios de Inventarios también pueden referenciar facturas a crédito reales, sin inventar comprobantes de Caja.
+
+Control de pagos confirma cada recibo mensual, soporte, importe, vencimiento y consumo informado. Su agenda reúne las cuotas documentadas y recibos, y conserva pagos parciales y pendientes reconocidos al cierre. Un pago posterior no reescribe el informe cerrado. Los análisis de tendencias y variaciones de costos/consumos quedan reservados al futuro módulo Reportes. [Alcance de Deudas](docs/deudas-module.md).
+
 ## Recursos institucionales identificados
 
 | Recurso | Destino autorizado |
@@ -98,5 +108,6 @@ Las herramientas manuales están disponibles mediante `npm run backup`, `npm run
 - [Estado de implementación](docs/implementation-status.md)
 - [Módulo Caja: alcance, decisiones y verificación](docs/caja-module.md)
 - [Módulo Inventarios: alcance e informes](docs/inventory-module.md)
+- [Módulo Deudas: obligaciones, recibos y cierres](docs/deudas-module.md)
 
 No se han conectado Microsoft Graph, Outlook, OneDrive ni Google Drive. La importación de documentos históricos requiere identificar su propietario y autorización específica. El repositorio contiene código y fixtures ficticios de pruebas; los secretos, respaldos y registros reales permanecen fuera de él.

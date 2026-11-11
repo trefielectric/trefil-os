@@ -1,3 +1,4 @@
+import { validateDebtModuleState } from './debts/validation';
 import { add, buildAmortization, fromCents, getAccountBalance, getDebtBalance, getSummary, isBalanced, money, rateFraction, toCents, validateDate, type State } from './finance';
 import { createEmptyState } from './finance/empty';
 import { validateInventoryState } from './inventory/validation';
@@ -193,6 +194,7 @@ export function inspectDemoState(value: unknown): { ok: true; state: State } | {
     try {
       if(root.cash!==undefined)validateCashState(state);
       if(root.inventory!==undefined)validateInventoryState(state);
+      if(root.debtModule!==undefined)validateDebtModuleState(state);
       state.accounts.forEach(account => getAccountBalance(state,account.id));
       state.debts.forEach(debt => { if (toCents(getDebtBalance(state,debt.id)) < 0n) invalid('debtPayments.capital superior al saldo'); });
       getSummary(state,'2026-11-10');

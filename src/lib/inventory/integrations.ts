@@ -1,3 +1,4 @@
+import { assertDebtPeriodOpen } from '../debts/engine';
 import { getDebtBalance, todayBogota } from '../finance/engine';
 import { fromCents, money, toCents } from '../finance/money';
 import { validateDate } from '../finance/amortization';
@@ -54,6 +55,13 @@ export function offsetInventorySupplierDebt(state:State,input:{saleId:string;deb
   if(previous){authorize(state,actor,locations(state,previous.saleId));if(previous.saleId===input.saleId&&previous.debtId===input.debtId&&previous.date===input.date&&previous.amount===amount&&previous.reference===input.reference.trim())return state;throw new Error('La clave ya se usó para otra compensación.');}
   const sale=effectiveDate(state,input.date,input.saleId);const debt=state.debts.find(row=>row.id===input.debtId&&row.kind==='supplier');
   if(sale.kind!=='scrap'||!debt)throw new Error('La compensación requiere una venta de chatarra y una obligación real de proveedor.');
+  assertDebtPeriodOpen(state,input.date);
+  const dispatch=inv.scrapDispatches.find(row=>row.saleId===sale.id);
+  const recognition=dispatch?.history.find(row=>row.action==='Peso reconocido por comprador'||row.action==='Peso definitivo reconocido');
+  if(!dispatch||dispatch.recognizedQuantity===undefined||!recognition||recognition.date>input.date){
+    throw new Error('Documenta el peso reconocido y la factura definitiva antes de compensar la chatarra.');
+  }
+
   const scope=locations(state,sale.id);authorize(state,actor,[...scope,debt.locationId]);
   if(scope.some(id=>id!==debt.locationId)||normalized(debt.creditor)!==normalized(sale.buyer))throw new Error('El comprador de chatarra y el proveedor deben ser el mismo tercero y sede.');
   if(input.date<debt.startDate)throw new Error('La compensación no puede ser anterior a la factura del proveedor.');

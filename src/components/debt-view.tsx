@@ -102,7 +102,7 @@ function ScheduleTable({ rows }: { rows: AmortizationRow[] }) {
   return <><div className="table-scroll"><table className="data-table"><caption className="sr-only">Tabla de amortización proyectada. No representa pagos realizados.</caption><thead><tr><th>Cuota</th><th>Vencimiento</th><th className="numeric">Pago proyectado</th><th className="numeric">Interés</th><th className="numeric">Capital</th><th className="numeric">Saldo capital</th></tr></thead><tbody>{visible.map(row => <tr key={row.period}><td><span className="muted">{String(row.period).padStart(2, '0')}</span></td><td>{dateLabel(row.date, true)} {row.date.slice(0, 4)}</td><td className="numeric"><strong>{formatCOP(row.payment)}</strong>{toCents(row.extraPayment) > 0n && <small className="muted">Incluye extra {formatCOP(row.extraPayment)}</small>}</td><td className="numeric">{formatCOP(row.interest)}<small className="muted">{row.monthlyRate} % mensual</small></td><td className="numeric">{formatCOP(row.principal)}</td><td className="numeric">{formatCOP(row.balance)}</td></tr>)}</tbody></table></div>{rows.length > 24 && <button className="button button-secondary" onClick={() => setShowAll(value => !value)}>{showAll ? 'Ver primeras 24 cuotas' : `Ver las ${rows.length} cuotas`}</button>}</>;
 }
 
-function SimulatorModal({ onClose, notify }: { onClose: () => void; notify: ViewProps['notify'] }) {
+export function SimulatorModal({ onClose, notify }: { onClose: () => void; notify: ViewProps['notify'] }) {
   const [draft, setDraft] = useState(defaultTerms);
   const [rows, setRows] = useState<AmortizationRow[] | null>(null);
   const [error, setError] = useState('');

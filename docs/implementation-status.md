@@ -34,6 +34,12 @@ La copia de trabajo incorpora cinco inventarios, ORIGEN único, cantidades exact
 
 Las conformidades departamentales son documentos, no sesiones institucionales. Omisiones, ajustes excepcionales, reclasificaciones/pérdidas y cambios de facturas o lotes cerrados generan solicitudes pendientes. No se han añadido tablas de stock a Supabase ni conectado Caja/Inventarios con bancos, facturación fiscal o cuentas institucionales. El alcance y las limitaciones se describen en [Inventarios](inventory-module.md); la validación integrada y la publicación tienen evidencia independiente en [Verificación](verification.md).
 
+## Deudas local: integración del Módulo 03
+
+El usuario pidió continuar con el PDF de Deudas y confirmó vencimiento manual por factura, devoluciones en disputa sin disminuir deuda hasta su aceptación documentada y excepciones pendientes de autorización institucional, sin otorgar permisos nuevos. Se implementan cuatro categorías con expedientes, planes oficiales separados del simulador, pagos por componentes, proveedores, compras a crédito, devoluciones, recibos recurrentes, agenda, informes y cierres locales conservados.
+
+La arquitectura mantiene `State.debts` y el libro de Caja como fuentes existentes. Los vínculos documentales y no monetarios evitan duplicar compras, pagos y cruces. El saldo histórico de ORIGEN tiene fecha de corte propia; no se presenta como si todos los pagos anteriores hubieran ocurrido dentro del sistema. La operación continúa en el navegador; no se han creado tablas remotas ni simulado usuarios institucionales. La verificación integrada y la publicación se registran de manera independiente de las 183 pruebas de Inventarios.
+
 ## Qué está implementado y qué sigue pendiente
 
 La web conserva las funciones para movimientos equilibrados, aprobaciones independientes, reversos, cuentas, conciliaciones, obligaciones, pagos separados entre capital e interés, simulaciones, alertas y auditoría. Sus listas empiezan vacías. El perfil local **no es autenticación ni autorización institucional** y no sustituye a las personas distintas que exige una aprobación empresarial. Cualquier dato del navegador puede ser editado por su usuario y nunca debe usarse como autoridad empresarial.

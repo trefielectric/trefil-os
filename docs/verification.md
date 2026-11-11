@@ -78,3 +78,11 @@ El navegador descargó PDF y XLSX con la misma identidad del informe y diferenci
 Las pruebas financieras comprobaron recepción de compra sin otro egreso, cobros parciales sin duplicar ingreso, límites de asignación, coincidencia de tercero/sede, períodos cerrados, facturas de proveedor con evidencia/vencimiento y compensación de chatarra sin efectivo, respetando capital reservado por pagos pendientes. Las pruebas del dominio verificaron ORIGEN previo, conservación de stock por bodega, activos individuales, lotes discrepantes, cuarentena, reconocimiento de pesos y cierres inmutables.
 
 La publicación se prepara en `codex/inventory-module`, con despliegues automáticos de esa rama desactivados. La integración final se dirige a `codex/finance-preview`; `main` y producción permanecen deshabilitados. El estado Ready y la comprobación del Preview deben verificarse después de la integración. Esta evidencia corresponde al módulo local: no certifica autenticación multiusuario, stock remoto en Supabase ni operación institucional.
+
+## Módulo 03 · Deudas · 11 de noviembre de 2026
+
+La verificación local aprobó TypeScript, 207 pruebas y la compilación estática de Next.js. Las pruebas cubren desembolsos vinculados, cinco componentes del pago, límites de aplicación por cuota, saldos históricos con fecha de corte y renegociaciones pendientes. También comprueban compras a crédito, devoluciones reconocidas, cruces de chatarra y el efecto de cada operación en Caja e Inventarios.
+
+En el navegador de prueba se registró un concepto recurrente y un recibo sintético. El cierre de octubre conservó el pendiente por pagar. La prueba del motor confirmó que el abono posterior liquida el recibo en su propia fecha y conserva el informe original. La validación del almacenamiento detecta cambios inconsistentes en el saldo de un cierre.
+
+Se revisaron una muestra PDF y un libro Excel con datos sintéticos. Ambos formatos presentan el mismo cálculo y conservan la identificación del período, los documentos y las novedades. Las muestras pertenecen al entorno de prueba.
