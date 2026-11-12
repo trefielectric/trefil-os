@@ -389,19 +389,19 @@ export function WorkforceApp() {
                       autoComplete={
                         activation || setup ? "new-password" : "current-password"
                       }
-                      minLength={activation || setup ? 12 : undefined}
+                      minLength={activation || setup ? 6 : undefined}
                       required
                     />
                   </Field>
                 {(activation || setup) && (
                   <Field
                     label="Repetir contraseña"
-                    hint="Mínimo 12 caracteres."
+                    hint="Mínimo técnico de Supabase: 6 caracteres. Sin requisitos de mayúsculas, números o símbolos."
                   >
                     <input
                       name="confirm"
                       type="password"
-                      minLength={12}
+                      minLength={6}
                       autoComplete="new-password"
                       required
                     />

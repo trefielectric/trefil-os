@@ -64,4 +64,7 @@ test('the one-time Equipo setup activates the reserved control-total owner', () 
   }
   assert.match(workforceApp, /Activa tu usuario de control total/);
   assert.doesNotMatch(workforceApp, /Crea la cuenta administradora/);
+  assert.doesNotMatch(workforceApp, /Mínimo 12 caracteres/);
+  assert.match(workforceApp, /minLength=\{activation \|\| setup \? 6 : undefined\}/);
+  assert.match(workforceInvite, /payload\.password\.length < 6/);
 });

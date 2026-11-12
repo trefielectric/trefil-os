@@ -57,7 +57,7 @@ Deno.serve(async (request) => {
 
     if (payload?.action === "bootstrap") {
       if (!hash.test(payload.identifierHash) || !lastFour.test(payload.identifierLastFour) ||
-        typeof payload.password !== "string" || payload.password.length < 12 ||
+        typeof payload.password !== "string" || payload.password.length < 6 ||
         payload.name !== initialAdministrator.name || payload.email !== initialAdministrator.email ||
         payload.title !== initialAdministrator.title || payload.area !== initialAdministrator.area)
         return respond({ code: "invalid_setup" }, 400);
