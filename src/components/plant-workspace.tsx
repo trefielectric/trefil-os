@@ -19,6 +19,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { PlantFinance } from "./plant-finance";
 import { PlantReport } from "./plant-report";
 import { DocumentReview } from "./document-review";
+import { CompanyArchive } from "./company-archive";
 import { PlantSuppliers } from "./plant-suppliers";
 import { signInWithDocument } from "@/lib/workforce";
 import {
@@ -56,6 +57,7 @@ const sectionNames: Record<string, string> = {
   panel: "Panel gerencial",
   auditoria: "Auditoría",
   revision: "Importaciones de SharePoint",
+  archivo: "Archivo de la empresa",
   informes: "Informes históricos",
 };
 const label = (k: string) => sections[k]?.name ?? sectionNames[k] ?? k;
@@ -974,13 +976,15 @@ export function PlantWorkspace({ area }: { area: Area }) {
           : []),
         ...(has("control.proyectos") ? ["proyecto"] : []),
         ...(has("archivo.ver") ? ["expediente"] : []),
-        ...(snapshot?.perfil === "CREADOR" ? ["revision"] : []),
+        ...(snapshot?.perfil === "CREADOR" ? ["archivo", "revision"] : []),
         ...(has("control.auditar") ? ["auditoria"] : []),
       ]
     : [...plantKinds, "informes"];
   useEffect(() => {
     if (area === "control" && window.location.hash === "#revision")
       setKind("revision");
+    if (area === "control" && window.location.hash === "#archivo")
+      setKind("archivo");
     if (area === "produccion" && window.location.hash === "#informes")
       setKind("informes");
   }, [area]);
@@ -1340,7 +1344,9 @@ export function PlantWorkspace({ area }: { area: Area }) {
                   Verificar códigos y existencias en Inventario central
                 </a>
               )}
-              {current === "revision" ? (
+              {current === "archivo" ? (
+                <CompanyArchive key={snapshot.persona} revision={snapshot.corte} />
+              ) : current === "revision" ? (
                 <DocumentReview key={snapshot.persona} revision={snapshot.corte} />
               ) : current === "personas" ? (
                 <>
