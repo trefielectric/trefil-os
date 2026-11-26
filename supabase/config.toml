@@ -868,3 +868,7 @@ entrypoint = "./functions/workforce-invite/index.js"
 # Status and the initial administrator begin before a session exists. The
 # function restricts origins; account links are revalidated by a scoped RPC.
 verify_jwt = true
+
+[functions.channel-inventory]
+# The function checks a distinct server token for each channel before accessing stock.
+verify_jwt = false

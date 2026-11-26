@@ -24,6 +24,8 @@ type Row = {
   unit?: string | null;
   reported?: number | null;
   available_presentations?: number | null;
+  sales_warehouse?: string | null;
+  channel_available?: number | null;
   code?: string | null;
   factor?: number | null;
   base_unit?: string | null;
@@ -243,15 +245,21 @@ export function CentralInventory() {
         const previous = selection.balances?.find(
           (x) => x.warehouse === warehouse,
         );
-        result = await client.rpc("central_inventory_record", {
-          p_code: selection.code,
-          p_warehouse: warehouse,
-          p_kind: field(f, "kind"),
-          p_qty: field(f, "qty"),
-          p_document: field(f, "document"),
-          p_revision: previous?.revision ?? 0,
-          p_request: requestId,
-        });
+        const publish = f.get("publish") === "on";
+        result = await client.rpc(
+          publish
+            ? "central_inventory_publish_count"
+            : "central_inventory_record",
+          {
+            p_code: selection.code,
+            p_warehouse: warehouse,
+            p_kind: field(f, "kind"),
+            p_qty: field(f, "qty"),
+            p_document: field(f, "document"),
+            p_revision: previous?.revision ?? 0,
+            p_request: requestId,
+          },
+        );
       } else {
         result = await client.rpc("central_inventory_link", {
           p_source: selection.source,
@@ -521,19 +529,30 @@ export function CentralInventory() {
                                   : fmt.format(row.reported) +
                                     " " +
                                     (row.unit ?? "")}
-                              {row.available_presentations != null && (
+                              {row.sales_warehouse && (
                                 <small>
-                                  En bodegas con conteo:{" "}
-                                  {fmt.format(row.available_presentations)}{" "}
-                                  presentaciones disponibles
-                                  {row.reported != null &&
-                                    " · Diferencia frente al canal: " +
-                                      fmt.format(
-                                        row.available_presentations -
-                                          row.reported,
-                                      )}
+                                  Bodega de venta · {row.sales_warehouse}
+                                  {row.channel_available != null &&
+                                    ` · Trefi ofrece ${fmt.format(row.channel_available)}`}
                                 </small>
                               )}
+                              {row.channel_available != null &&
+                                row.reported != null && (
+                                  <small>
+                                    {row.reported === row.channel_available
+                                      ? "El último saldo leído del canal coincide."
+                                      : `Diferencia con el último saldo leído del canal: ${fmt.format(row.channel_available - row.reported)}`}
+                                  </small>
+                                )}
+                              {!row.sales_warehouse &&
+                                row.available_presentations != null && (
+                                  <small>
+                                    Conteo en bodegas ·{" "}
+                                    {fmt.format(row.available_presentations)}{" "}
+                                    presentaciones. Pendiente de asignar bodega
+                                    de venta.
+                                  </small>
+                                )}
                             </td>
                             <td>
                               {source === "fisico" ? (
@@ -629,6 +648,15 @@ export function CentralInventory() {
                         ))}
                     </select>
                   </label>
+                  {data.approve && !selection.sales_warehouse && (
+                    <label>
+                      <span>
+                        <input name="publish" type="checkbox" /> Usar esta
+                        bodega para las ventas por internet al registrar el
+                        conteo
+                      </span>
+                    </label>
+                  )}
                   <label>
                     Cantidad en {selection.base_unit}
                     <input
