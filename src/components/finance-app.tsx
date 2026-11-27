@@ -1,6 +1,7 @@
 'use client';
 import { getDebtCalendar, getRecurringBillBalance, getDebtModuleState } from '@/lib/debts/engine';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { JornadaPermissions } from "@/lib/jornada-permissions";
+import { useContext, useCallback, useEffect, useRef, useState } from 'react';
 import { Package, LayoutDashboard, ArrowRightLeft, Wallet, Landmark, CheckCheck, ShieldCheck, Bell, Activity, Settings, Search, ChevronDown, ChevronRight, Plus, Download, ArrowUpRight, ArrowDownLeft, ArrowRight, Building2, Menu, X, HardDrive, Check, LockKeyhole, Users, ShoppingCart, Code2, CalendarClock, FileBarChart, Archive } from 'lucide-react';
 import { createEmptyState, formatCOP, getAccountBalance, getDebtBalance, deriveAlerts, toCents, fromCents, add } from '@/lib/finance';
 import type { State, Actor, Transaction } from '@/lib/finance';
@@ -63,11 +64,20 @@ const titles:Record<View,{title:string;subtitle:string}> = {
   team:{title:'Tu equipo, en un solo lugar.',subtitle:'Personas, contraseñas, permisos y horarios sin salir de Trefil OS.'},
 };
 
+const viewPermission:Record<View,string> = {
+  overview:'finance_view',transactions:'finance_view',accounts:'cash_view',agenda:'agenda_view',
+  inventory:'inventory_view',sales:'sales_view',debts:'debts_view',reports:'reports_view',
+  alegra:'alegra_read',reconciliations:'finance_view',approvals:'finance_approve',alerts:'finance_view',
+  audit:'reports_view',settings:'people_manage',team:'',
+};
 export function FinanceApp() {
+  const capabilities=useContext(JornadaPermissions);
+  const allowed=(id:View)=>!viewPermission[id]||capabilities.includes(viewPermission[id]);
   const [state,setState]=useState<State|null>(null);
   const current=useRef<State|null>(null);
   const [actorId,setActorId]=useState('');
-  const [view,setView]=useState<View>('overview');
+  const [requestedView,setView]=useState<View>('overview');
+  const view=allowed(requestedView)?requestedView:(navItems.find(item=>allowed(item.id)&&item.id!=='alegra')?.id??'team');
   const [cashTab,setCashTab]=useState<CashModuleTab>('operations');
   const [location,setLocation]=useState('all');
   const [period,setPeriod]=useState(DEMO_DATE.slice(0,7));
@@ -150,6 +160,12 @@ export function FinanceApp() {
   const mutate:Mutation=(operation,message)=>{
     setActionError('');
     const fail=(message:string)=>{setActionError(message);notify(message);return false;};
+    const writePermissions:Partial<Record<View,string[]>>={
+      accounts:['cash_register','cash_close'],agenda:['agenda_manage'],inventory:['inventory_register','inventory_approve'],
+      sales:['sales_register','sales_approve'],debts:['debts_register','debts_approve'],approvals:['finance_approve'],
+      settings:['people_manage'],reports:['reports_export']
+    };
+    if(!(writePermissions[view]??['finance_edit','finance_approve']).some(code=>capabilities.includes(code)))return fail('Tu permiso para este módulo es de consulta.');
     if(!current.current)return fail('El espacio local todavía no está listo.');
     if(!hasWriterLock.current||!canPersist.current)return fail(readOnlyReason.current||'El espacio local está en solo lectura. Cierra otras pestañas y recarga para volver a registrar.');
     try{
@@ -175,8 +191,8 @@ export function FinanceApp() {
   const openAlerts=alerts.filter(a=>a.status!=='resolved');
   const pending=state.transactions.filter(t=>t.status==='pending');
   const counts:Partial<Record<View,number>>={approvals:pending.length,alerts:openAlerts.length};
-  const go=(id:View)=>{setView(id);setSearch('');setSidebarOpen(false);window.history.replaceState(null,'',id==='accounts'?'#caja/'+cashTab:id==='inventory'?'#inventarios':id==='sales'?'#ventas':id==='debts'?'#deudas':id==='team'?'#equipo':'#'+id);};
-  const openCash=(tab:CashModuleTab)=>{setCashTab(tab);setView('accounts');setSearch('');setSidebarOpen(false);window.history.replaceState(null,'','#caja/'+tab);};
+  const go=(id:View)=>{if(!allowed(id)){notify('Tu perfil no tiene acceso a este módulo.');return;}setView(id);setSearch('');setSidebarOpen(false);window.history.replaceState(null,'',id==='accounts'?'#caja/'+cashTab:id==='inventory'?'#inventarios':id==='sales'?'#ventas':id==='debts'?'#deudas':id==='team'?'#equipo':'#'+id);};
+  const openCash=(tab:CashModuleTab)=>{if(!allowed('accounts'))return;setCashTab(tab);setView('accounts');setSearch('');setSidebarOpen(false);window.history.replaceState(null,'','#caja/'+tab);};
   const props:ViewProps={state,actor,location,mutate,notify};
   const hasAccounts=visibleAccounts(state,location).some(account=>account.active);
   const exportReport=()=>openCash('reports');
@@ -186,15 +202,15 @@ export function FinanceApp() {
       <Brand/><button className="workspace-switch" onClick={()=>go('settings')}><span className="company-icon"><Building2 size={18}/></span><span><strong>Trefil Electric</strong><small>Espacio empresarial</small></span><ChevronDown size={14}/></button>
       <div className="nav-label">ESPACIO DE TRABAJO</div>
       <a className="nav-item" href="/produccion/"><Package size={18}/><span>Producción</span></a>
-      <nav aria-label="Navegación principal">{navItems.slice(0,11).map(({id,label,icon:Icon})=><button key={id} onClick={()=>go(id)} className={'nav-item '+(view===id?'active':'')} aria-current={view===id?'page':undefined}><Icon size={18}/><span>{label}</span>{Boolean(counts[id])&&<b>{counts[id]}</b>}</button>)}</nav>
-      <div className="nav-label control-label">CONTROL Y GESTIÓN</div><nav aria-label="Control y gestión">{navItems.slice(11).map(({id,label,icon:Icon})=><button key={id} onClick={()=>go(id)} className={'nav-item '+(view===id?'active':'')} aria-current={view===id?'page':undefined}><Icon size={18}/><span>{label}</span>{Boolean(counts[id])&&<b className={id==='alerts'?'alert-count':''}>{counts[id]}</b>}</button>)}<a className="nav-item" href="/desarrolladores/"><Code2 size={18}/><span>Desarrolladores</span></a></nav>
+      <nav aria-label="Navegación principal">{navItems.slice(0,11).filter(item=>allowed(item.id)).map(({id,label,icon:Icon})=><button key={id} onClick={()=>go(id)} className={'nav-item '+(view===id?'active':'')} aria-current={view===id?'page':undefined}><Icon size={18}/><span>{label}</span>{Boolean(counts[id])&&<b>{counts[id]}</b>}</button>)}</nav>
+      <div className="nav-label control-label">CONTROL Y GESTIÓN</div><nav aria-label="Control y gestión">{navItems.slice(11).filter(item=>allowed(item.id)).map(({id,label,icon:Icon})=><button key={id} onClick={()=>go(id)} className={'nav-item '+(view===id?'active':'')} aria-current={view===id?'page':undefined}><Icon size={18}/><span>{label}</span>{Boolean(counts[id])&&<b className={id==='alerts'?'alert-count':''}>{counts[id]}</b>}</button>)}<a className="nav-item" href="/desarrolladores/"><Code2 size={18}/><span>Desarrolladores</span></a></nav>
       <a className="nav-item" href="/control-administrativo/"><LockKeyhole size={18}/><span>Control Administrativo</span></a>
       <div className="sidebar-bottom"><div className="phase-card"><span className="phase-icon">↗</span><strong>Hecho para tu operación.</strong><p>Una base financiera.<br/>Todo un ecosistema por delante.</p><button onClick={()=>go('settings')}>Ver hoja de ruta <ArrowUpRight size={14}/></button></div><button className="backup-sidebar" onClick={()=>go('settings')}><HardDrive size={16}/><span>Respaldo sin verificar</span><i/></button><div className="sidebar-divider"/><button className="profile-button" onClick={()=>setProfileOpen(!profileOpen)} aria-expanded={profileOpen}><span className="avatar">TE</span><span><strong>{roleLabels[actor.role]}</strong><small>Perfil local · Sin autenticar</small></span><ChevronDown size={14}/></button></div>
       {profileOpen&&<div className="profile-menu"><div className="eyebrow">ESPACIO LOCAL</div><p className="local-profile-note">Este perfil identifica cambios en este navegador. Equipo, Producción y Control Administrativo utilizan tu cuenta institucional.</p><button onClick={()=>{go('settings');setProfileOpen(false);}}><span>Ver configuración</span><Settings size={15}/></button><a className="text-button" href="/acceso/"><LockKeyhole size={15}/> Acceso institucional</a></div>}
 
     </aside>
     <div className="main-shell">
-      <header className="topbar"><div className="breadcrumbs"><button className="icon-button mobile-menu" aria-label="Abrir menú" onClick={()=>setSidebarOpen(true)}><Menu size={21}/></button><MobileBrand/><span className="workspace-breadcrumb">Espacio de trabajo</span><ChevronRight size={13}/><strong>{navItems.find(i=>i.id===view)?.label}</strong></div><div className="topbar-actions"><div className="global-search"><Search size={16}/><input ref={searchRef} placeholder="Buscar movimientos…" aria-label="Buscar movimientos" value={search} onChange={e=>{setSearch(e.target.value);setView('transactions');}}/><kbd>⌘ K</kbd></div><span className="topbar-separator"/><button className="notification-button icon-button" aria-label={'Ver '+openAlerts.length+' alertas'} onClick={()=>go('alerts')}><Bell size={20}/>{openAlerts.length>0&&<i/>}</button><span className="avatar avatar-small">TE</span></div></header>
+      <header className="topbar"><div className="breadcrumbs"><button className="icon-button mobile-menu" aria-label="Abrir menú" onClick={()=>setSidebarOpen(true)}><Menu size={21}/></button><MobileBrand/><span className="workspace-breadcrumb">Espacio de trabajo</span><ChevronRight size={13}/><strong>{navItems.find(i=>i.id===view)?.label}</strong></div><div className="topbar-actions"><div className="global-search"><Search size={16}/><input ref={searchRef} placeholder="Buscar movimientos…" aria-label="Buscar movimientos" value={search} onChange={e=>{setSearch(e.target.value);setView('transactions');}}/><kbd>⌘ K</kbd></div><span className="topbar-separator"/><button className="notification-button icon-button" hidden={!allowed('alerts')} aria-label={'Ver '+(allowed('alerts')?openAlerts.length:0)+' alertas'} onClick={()=>go('alerts')}><Bell size={20}/>{allowed('alerts')&&openAlerts.length>0&&<i/>}</button><span className="avatar avatar-small">TE</span></div></header>
       <main id="main-content">
         <div className="demo-bar"><span><i/> ESPACIO LOCAL <b>Guardado en este navegador · Conexión institucional pendiente</b></span><button onClick={()=>go('settings')}>Estado de implementación <ArrowRight size={13}/></button></div>
         {error&&<div className="error-banner" role="alert">{error}<button aria-label="Cerrar aviso de almacenamiento" onClick={()=>setError('')}><X size={16}/></button></div>}

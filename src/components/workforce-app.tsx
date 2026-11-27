@@ -15,10 +15,8 @@ import {
   CalendarDays,
   ClipboardList,
   Clock,
-  DoorOpen,
   KeyRound,
   LogOut,
-  Plus,
   RefreshCw,
   ShieldCheck,
   Users,
@@ -41,7 +39,6 @@ import {
   signInWithDocument,
   workforceRpc,
   WorkforceError,
-  type Shift,
   type WorkforceDay,
 } from "@/lib/workforce";
 import { Badge, Field } from "./ui";
@@ -75,7 +72,7 @@ function errorText(reason: unknown) {
     : authErrorMessage(reason);
 }
 
-export function WorkforceApp() {
+export function WorkforceApp({entryOnly=false}:{entryOnly?:boolean}={}) {
   const configured = publicSupabaseConfiguration().configured;
   const [screen, setScreen] = useState<Screen>("loading");
   const [data, setData] = useState<WorkforceDay | null>(null);
@@ -92,7 +89,6 @@ export function WorkforceApp() {
   const bootstrapChecked = useRef(false);
   const version = useRef(0);
   const locked = useRef(false);
-  const arrival = useRef<string | null>(null);
 
   const load = useCallback(
     async (client: SupabaseClient, selected: string | null) => {
@@ -150,6 +146,8 @@ export function WorkforceApp() {
           (session && sessionStorage.getItem(activationKey) === session.user.id)
         ) {
           setScreen("activation");
+        } else if (session && entryOnly) {
+          window.dispatchEvent(new Event("jornada-updated"));
         } else if (session) {
           void refresh.current(client, requestedDay.current);
         } else if (!bootstrapChecked.current) {
@@ -263,7 +261,8 @@ export function WorkforceApp() {
           }
           await updateRecoveredPassword(client, password);
           sessionStorage.removeItem(activationKey);
-          await load(client, null);
+          window.dispatchEvent(new Event("jornada-updated"));
+          if (!entryOnly) await load(client, null);
         } else {
           await signInWithDocument(client, documentNumber, password);
         }
@@ -280,28 +279,11 @@ export function WorkforceApp() {
         await signOut(client);
         sessionStorage.removeItem(activationKey);
         invitation.current = null;
-        arrival.current = null;
         window.history.replaceState(null, "", window.location.pathname);
         setScreen("signin");
       },
       undefined,
       false,
-    );
-  }
-
-  function mark(open?: Shift) {
-    void perform(
-      async (client) => {
-        const id = open?.id ?? (arrival.current ??= crypto.randomUUID());
-        await workforceRpc(client, "workforce_mark_shift", {
-          p_action: open ? "departure" : "arrival",
-          p_id: id,
-        });
-        arrival.current = null;
-        setDay(null);
-        requestedDay.current = null;
-      },
-      open ? "Salida registrada." : "Llegada registrada.",
     );
   }
 
@@ -314,7 +296,7 @@ export function WorkforceApp() {
           <Brand href="/" />
           <div>
             <Users size={29} />
-            <h1>Equipo</h1>
+            <h1>{entryOnly ? "Mi jornada" : "Equipo"}</h1>
             <p>Consulta tus tareas y registra tu jornada.</p>
           </div>
         </aside>
@@ -591,18 +573,7 @@ export function WorkforceApp() {
                           : "Llegada pendiente"}
                     </span>
                     <strong>{clockLabel(data.server_now)}</strong>
-                    {hasCapability(data, "attendance_mark") ? (
-                      <button
-                        className="button button-primary"
-                        disabled={busyDay}
-                        onClick={() => mark(open)}
-                      >
-                        {open ? <DoorOpen size={19} /> : <Plus size={19} />}
-                        {open ? "Marcar salida" : "Marcar llegada"}
-                      </button>
-                    ) : (
-                      <span>Tu rol permite consultar, pero no marcar asistencia.</span>
-                    )}
+                    <Link className="button button-primary" href="/usuario/">Abrir Mi jornada</Link>
                   </div>
                 </>
               )}

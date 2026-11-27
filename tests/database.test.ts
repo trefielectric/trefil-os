@@ -37,6 +37,10 @@ async function setup() {
     insert into auth.users(id,email) values
       ('${ids.owner}','owner@example.test'),('${ids.approver}','approver@example.test'),('${ids.treasury}','treasury@example.test'),
       ('${ids.auditor}','auditor@example.test'),('${ids.outsider}','outsider@example.test');
+    insert into workforce.people(user_id,email,identifier_hash,identifier_last_four,full_name,job_title,area,access_role)
+      select id,email,md5(id::text)||md5(id::text),'0000','Operador de prueba','Operador','Pruebas','employee' from auth.users;
+    insert into workforce.shifts(id,person_id,arrived_at,reviewed_at)
+      select gen_random_uuid(),id,now(),now() from workforce.people;
     insert into public.profiles(id,display_name) select id,'Persona ficticia de prueba' from auth.users;
     insert into public.organizations(id,name,slug) values ('${ids.org}','Empresa ficticia A','fixture-a'),('${ids.otherOrg}','Empresa ficticia B','fixture-b');
     insert into public.locations(id,organization_id,name) values

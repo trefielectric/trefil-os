@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
+import './usuario/jornada.css';
+import { JornadaGate } from '@/components/jornada-gate';
 import './equipo/workforce.css';
 
 export const metadata: Metadata = {
@@ -14,5 +16,5 @@ export const metadata: Metadata = {
 };
 export const viewport: Viewport = { width: 'device-width', initialScale: 1, themeColor: '#1d3d6a' };
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return <html lang="es-CO"><body>{children}</body></html>;
+  return <html lang="es-CO"><body><JornadaGate>{children}</JornadaGate></body></html>;
 }
