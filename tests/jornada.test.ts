@@ -63,7 +63,7 @@ test("Módulo 00 verifica revisión, alcance, herencia, cronometraje, cierres y 
       "20261117144544_simplify_team_admin_access",
       "20261117185415_workforce_admin_credentials_and_removal",
       "20261127145504_usuario_jornada",
-      "20261127150100_usuario_jornada_gateway",
+      "20261127153014_usuario_jornada_gateway",
     ])
       await db.exec(
         await readFile(
