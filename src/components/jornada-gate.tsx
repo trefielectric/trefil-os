@@ -12,7 +12,8 @@ import { CalendarClock } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { jornadaRpc } from "@/lib/jornada";
 import { Brand } from "./brand";
-import { JornadaPermissions } from "@/lib/jornada-permissions";
+import { PublicShift, PublicPlant, TeamPage } from "./public-workspace";
+import { JornadaPermissions, PublicWorkspace } from "@/lib/jornada-permissions";
 import { JornadaPanel } from "./jornada-panel";
 import { WorkforceApp } from "./workforce-app";
 
@@ -21,9 +22,13 @@ export function JornadaGate({ children }: { children: ReactNode }) {
   const path = usePathname();
   const personal = path.replace(/\/$/, "") === "/usuario";
   if (path.replace(/\/$/, "") === "/acceso") return children;
-  if (path === "/acceso/" || path === "/acceso") return <>{children}</>;
+
   return (
-    <SessionGate key={path} personal={personal}>
+    <SessionGate
+      key={path}
+      path={path.replace(/\/$/, "") || "/"}
+      personal={personal}
+    >
       {children}
     </SessionGate>
   );
@@ -31,10 +36,15 @@ export function JornadaGate({ children }: { children: ReactNode }) {
 function SessionGate({
   children,
   personal,
+  path,
 }: {
+  path: string;
   children: ReactNode;
   personal: boolean;
 }) {
+  const [privateEntry, setPrivateEntry] = useState(path.startsWith("/oauth/"));
+  const [activation, setActivation] = useState(false);
+  const [publicEnabled, setPublicEnabled] = useState<boolean | null>(null);
   const [phase, setPhase] = useState<Phase>("loading");
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
@@ -45,14 +55,29 @@ function SessionGate({
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const refresh = useCallback(async () => {
     const current = ++seq.current;
+    setPrivateEntry(
+      path.startsWith("/oauth/") ||
+        (personal &&
+          new URLSearchParams(location.search).get("ingresar") === "1"),
+    );
+    setActivation(
+      path === "/equipo" &&
+        (new URLSearchParams(location.hash.slice(1)).has("activacion") ||
+          !!sessionStorage.getItem("trefil-os:workforce:activate")),
+    );
     const client = getSupabaseClient();
     if (!client) {
+      setPublicEnabled(false);
       setPhase("login");
       return;
     }
     try {
-      const { data, error } = await client.auth.getSession();
+      const [{ data, error }, setting] = await Promise.all([
+        client.auth.getSession(),
+        client.rpc("workforce_preview_enabled"),
+      ]);
       if (current !== seq.current) return;
+      setPublicEnabled(!setting.error && setting.data === true);
       if (error) throw error;
       if (
         !data.session ||
@@ -83,7 +108,7 @@ function SessionGate({
         );
       }
     }
-  }, []);
+  }, [path, personal]);
   useEffect(() => {
     const client = getSupabaseClient();
     const later = () => {
@@ -125,6 +150,34 @@ function SessionGate({
       window.removeEventListener("jornada-updated", later);
     };
   }, [refresh]);
+  if (activation) return <WorkforceApp entryOnly />;
+  if (
+    path === "/equipo" ||
+    (path === "/" &&
+      publicEnabled === false &&
+      phase !== "ready" &&
+      typeof window !== "undefined" &&
+      window.location.hash === "#equipo")
+  )
+    return <TeamPage />;
+  if (
+    publicEnabled === true &&
+    !privateEntry &&
+    phase !== "ready" &&
+    !(personal && phase === "plan")
+  ) {
+    return (
+      <PublicWorkspace.Provider value={true}>
+        {personal ? (
+          <PublicShift />
+        ) : path === "/produccion" || path === "/control-administrativo" ? (
+          <PublicPlant control={path === "/control-administrativo"} />
+        ) : (
+          children
+        )}
+      </PublicWorkspace.Provider>
+    );
+  }
   if (phase === "login") return <WorkforceApp entryOnly />;
   if (phase === "loading" || phase === "error")
     return (
@@ -132,7 +185,7 @@ function SessionGate({
         <Brand />
         <h1>Mi jornada</h1>
         <p role="status">
-          {phase === "loading" ? "Comprobando tu jornada…" : message}
+          {phase === "loading" ? "Abriendo la plataforma…" : message}
         </p>
         {phase === "error" && (
           <>

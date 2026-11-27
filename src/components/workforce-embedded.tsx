@@ -5,11 +5,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { KeyRound, LoaderCircle, ShieldCheck } from "lucide-react";
 import { getSupabaseClient, publicSupabaseConfiguration } from "@/lib/supabase/client";
 import {
+  roleLabel,
   signInWithDocument,
   workforceRpc,
   WorkforceError,
   type WorkforceDay,
 } from "@/lib/workforce";
+import {MyAccount,type AccountDetails} from "./my-account";
 import { Field } from "./ui";
 import { TeamManagement } from "./workforce-team";
 import type { Perform } from "./workforce-app";
@@ -28,46 +30,42 @@ export function WorkforceEmbedded() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const locked = useRef(false);
+  const generation=useRef(0);
+  const [account,setAccount]=useState<AccountDetails|null>(null);
+  const [signingIn,setSigningIn]=useState(false);
 
   const load = useCallback(async (client: SupabaseClient) => {
-    setChecking(true);
+    const version=++generation.current;
     try {
-      const next = await workforceRpc<WorkforceDay>(client, "workforce_day", { p_day: null });
-      setSnapshot(next);
-      setError("");
+      const me=await workforceRpc<AccountDetails>(client,"workforce_my_account",{});
+      if(version!==generation.current)return;
+      setAccount(me);
+      const next=await workforceRpc<WorkforceDay>(client,"workforce_day",{p_day:null});
+      if(version!==generation.current)return;
+      setSnapshot(next);setError("");
     } catch (reason) {
+      if(version!==generation.current)return;
       setSnapshot(null);
-      setError(messageFor(reason));
+      setError(reason instanceof WorkforceError && reason.message.startsWith("Abre Mi jornada")?"":messageFor(reason));
     } finally {
-      setChecking(false);
+      if(version===generation.current)setChecking(false);
     }
   }, []);
 
   useEffect(() => {
-    const client = getSupabaseClient();
-    if (!client) {
-      setChecking(false);
-      return;
-    }
-    let active = true;
-    void client.auth.getSession().then(({ data }) => {
-      if (!active) return;
-      if (data.session) void load(client);
-      else setChecking(false);
-    });
-    const { data: { subscription } } = client.auth.onAuthStateChange((event, session) => {
-      if (!active) return;
-      if (!session || event === "SIGNED_OUT") {
-        setSnapshot(null);
-        setChecking(false);
-        return;
+    const client=getSupabaseClient();
+    if(!client){setChecking(false);return;}
+    let timer:ReturnType<typeof setTimeout>|undefined, identity="";
+    const {data:{subscription}}=client.auth.onAuthStateChange((_event,session)=>{
+      clearTimeout(timer);
+      if(identity!==(session?.user.id??"")){
+        ++generation.current;identity=session?.user.id??"";
+        setAccount(null);setSnapshot(null);setNotice("");setError("");
       }
-      if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") void load(client);
+      if(!session){setChecking(false);return;}
+      timer=setTimeout(()=>void load(client),0);
     });
-    return () => {
-      active = false;
-      subscription.unsubscribe();
-    };
+    return ()=>{++generation.current;clearTimeout(timer);subscription.unsubscribe();};
   }, [load]);
 
   const perform: Perform = async (operation, success, shouldRefresh = true) => {
@@ -100,7 +98,6 @@ export function WorkforceEmbedded() {
         String(fields.get("password") ?? ""),
       );
       form.reset();
-      await load(client);
     }, undefined, false);
   }
 
@@ -112,19 +109,20 @@ export function WorkforceEmbedded() {
     return <section className="workforce-embedded-state"><span className="workforce-spinner"><LoaderCircle size={24} /></span><div><h2>Abriendo Equipo</h2><p>Usando tu sesión actual de Trefil OS.</p></div></section>;
   }
 
-  if (!snapshot) {
+  if (!account) {
     return (
       <section className="workforce-embedded-login">
         <div>
-          <p className="workforce-eyebrow">ACCESO DE EQUIPO</p>
-          <h2>Inicia sesión sin salir de Trefil OS</h2>
-          <p>La lista de personas se abrirá aquí mismo y conservará la navegación principal.</p>
+          <p className="workforce-eyebrow">EQUIPO</p>
+          <h2>Usuarios y contraseñas</h2>
+          <p>Desde tu cuenta puedes gestionar el equipo según tus permisos y cambiar tu contraseña.</p>
+          {!signingIn&&<button className="button button-primary" onClick={()=>setSigningIn(true)}>Entrar a mi cuenta</button>}
         </div>
-        <form onSubmit={submit}>
+        {signingIn&&<form onSubmit={submit}>
           <Field label="Número de cédula o correo"><input name="document" autoComplete="username" required /></Field>
           <Field label="Contraseña"><input name="password" type="password" autoComplete="current-password" required /></Field>
           <button className="button button-primary" disabled={busy}><KeyRound size={16} /> Iniciar sesión</button>
-        </form>
+        </form>}
         {error && <p className="workforce-feedback error" role="alert">{error}</p>}
       </section>
     );
@@ -134,7 +132,9 @@ export function WorkforceEmbedded() {
     <div className="workforce-embedded">
       {notice && <p className="workforce-feedback" role="status">{notice}</p>}
       {error && <p className="workforce-feedback error" role="alert">{error}</p>}
-      <TeamManagement snapshot={snapshot} busy={busy} perform={perform} />
+      <MyAccount account={account} role={roleLabel(snapshot?.roles??[],account.role)}/>
+      {snapshot?.can_manage&&<TeamManagement snapshot={snapshot} busy={busy} perform={perform}/>}
+      <a className="button button-secondary" href="/usuario/?ingresar=1">Abrir mi jornada</a>
     </div>
   );
 }

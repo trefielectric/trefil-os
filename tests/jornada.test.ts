@@ -64,6 +64,7 @@ test("Módulo 00 verifica revisión, alcance, herencia, cronometraje, cierres y 
       "20261117185415_workforce_admin_credentials_and_removal",
       "20261127145504_usuario_jornada",
       "20261127153014_usuario_jornada_gateway",
+      "20261127183542_acceso_publico_y_cuentas",
     ])
       await db.exec(
         await readFile(
@@ -94,6 +95,23 @@ test("Módulo 00 verifica revisión, alcance, herencia, cronometraje, cierres y 
     await db.exec(
       "update jornada.monitor set launch=now()-interval '3 days',last_day=jornada.day_of(now())-1",
     );
+    await run("update workforce.people set contact_email='creador@example.invalid' where id=$1",[pa]);
+    await db.exec("set role service_role");
+    assert.deepEqual(await run("select public.workforce_login_address('CREADOR@example.invalid') login"),[{login:"1@example.invalid"}]);
+    await db.exec("reset role;set role anon");
+    await assert.rejects(run("select public.workforce_login_address('creador@example.invalid')"),/permission denied/);
+    await assert.rejects(run("select public.workforce_my_account()"),/permission denied/);
+    assert.deepEqual(await run("select public.workforce_preview_enabled() enabled"),[{enabled:true}]);
+    await assert.rejects(run("select public.workforce_set_preview(false)"),/permission denied/);
+    await as(ua);
+    assert.deepEqual(await run("select public.workforce_set_preview(false) enabled"),[{enabled:false}]);
+    await as(ub);await assert.rejects(run("select public.workforce_set_preview(true)"),/creadora/);
+    await as(ua);await run("select public.workforce_set_preview(true)");
+    const account=(await run("select public.workforce_my_account() account"))[0] as {account:{creator:boolean;contact:string}};
+    assert.equal(account.account.creator,true);assert.equal(account.account.contact,"creador@example.invalid");
+    await run("select set_config('request.path','/rpc/workforce_day',false)");await run("select jornada.check_request()");
+    await as(ub);await assert.rejects(run("select jornada.check_request()"),/confirma/);
+    await assert.rejects(run("select public.workforce_invite_target($1)",[pa]),/autorización/);
     await as(ua);
     const gate = async () => {
       await run(

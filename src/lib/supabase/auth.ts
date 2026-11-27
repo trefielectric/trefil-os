@@ -61,8 +61,8 @@ export async function requestRecovery(client: SupabaseClient, email: string): Pr
   const { error } = await client.auth.resetPasswordForEmail(email.trim(), { redirectTo });
   if (error) throw failure(error);
 }
-export async function updateRecoveredPassword(client: SupabaseClient, password: string): Promise<void> {
-  if (password.length < 12) throw new AuthFlowError('password_too_short', 'Usa una contraseña de al menos 12 caracteres.');
+export async function updateRecoveredPassword(client: SupabaseClient, password: string, minimum=12): Promise<void> {
+  if (password.length < minimum) throw new AuthFlowError('password_too_short', 'Usa una contraseña de al menos '+minimum+' caracteres.');
   const { data: { user }, error: identityError } = await client.auth.getUser();
   if (identityError || !user) throw failure(identityError);
   const { error } = await client.auth.updateUser({ password });

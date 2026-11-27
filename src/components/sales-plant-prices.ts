@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
+import { PublicWorkspace } from "@/lib/jornada-permissions";
 import { getSupabaseClient } from "@/lib/supabase/client";
 
 type OfficialPrice = {
@@ -9,10 +10,12 @@ type OfficialPrice = {
   vigente: string;
 };
 export function usePlantPrices() {
+  const guest=useContext(PublicWorkspace);
   const [prices, setPrices] = useState<OfficialPrice[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   useEffect(() => {
+    if(guest){setPrices([]);setLoading(false);setMessage("Catálogo de prueba");return;}
     const client = getSupabaseClient();
     if (!client) {
       setLoading(false);
@@ -63,6 +66,6 @@ export function usePlantPrices() {
       data.subscription.unsubscribe();
       window.removeEventListener("focus", refresh);
     };
-  }, []);
+  }, [guest]);
   return { prices, loading, message };
 }

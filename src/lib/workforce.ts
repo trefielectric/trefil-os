@@ -134,9 +134,17 @@ export async function signInWithDocument(
   password: string,
 ) {
   const normalized = identifier.trim().toLowerCase();
-  const email = normalized.includes("@")
-    ? normalized
-    : (await documentIdentity(normalized)).authEmail;
+  if(normalized.includes("@")) {
+    const {data,error}=await client.functions.invoke<{access_token:string;refresh_token:string}>("workforce-login",{
+      body:{email:normalized,password},
+    });
+    if(error||!data?.access_token||!data.refresh_token)
+      throw new WorkforceError(error?.context?.status===429?"Espera unos minutos antes de volver a intentar.":"El correo o la contraseña no son correctos.");
+    const result=await client.auth.setSession(data);
+    if(result.error)throw new WorkforceError("No se pudo abrir la sesión.");
+    return;
+  }
+  const email=(await documentIdentity(normalized)).authEmail;
   const { error } = await client.auth.signInWithPassword({
     email,
     password,

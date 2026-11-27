@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useContext, useEffect, useRef, useState, type FormEvent } from "react";
+import { PublicWorkspace } from "@/lib/jornada-permissions";
 import {
   getSupabaseClient,
   publicSupabaseConfiguration,
@@ -74,6 +75,7 @@ const errorMessage = (e: unknown) =>
   e instanceof Error ? e.message : "La operación no se pudo completar.";
 
 export function CentralInventory() {
+  const guest=useContext(PublicWorkspace);
   const [identity, setIdentity] = useState<string | null | undefined>(
     undefined,
   );
@@ -110,6 +112,7 @@ export function CentralInventory() {
   }, [identity]);
 
   useEffect(() => {
+    if(guest){setData({items:[],total:0,page:1,page_size:50,approve:false,register:false,sources:[],feeds:[]});setLoading(false);return;}
     const client = getSupabaseClient();
     if (!client) {
       setIdentity(null);
@@ -128,7 +131,7 @@ export function CentralInventory() {
       }
     });
     return () => subscription.unsubscribe();
-  }, []);
+  }, [guest]);
   useEffect(() => {
     if (!identity) return;
     const client = getSupabaseClient();
@@ -306,11 +309,11 @@ export function CentralInventory() {
           {notice}
         </p>
       )}
-      {!configuration.configured ? (
+      {!guest && !configuration.configured ? (
         <p role="status">{configuration.reason}</p>
-      ) : identity === undefined ? (
+      ) : !guest && identity === undefined ? (
         <p role="status">Comprobando sesión…</p>
-      ) : identity === null ? (
+      ) : !guest && identity === null ? (
         <form className="hub-form" onSubmit={submitLogin}>
           <h2>Ingreso de equipo</h2>
           <label>

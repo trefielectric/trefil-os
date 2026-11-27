@@ -259,7 +259,7 @@ export function WorkforceApp({entryOnly=false}:{entryOnly?:boolean}={}) {
             invitation.current = null;
             window.history.replaceState(null, "", window.location.pathname);
           }
-          await updateRecoveredPassword(client, password);
+          await updateRecoveredPassword(client, password, 6);
           sessionStorage.removeItem(activationKey);
           window.dispatchEvent(new Event("jornada-updated"));
           if (!entryOnly) await load(client, null);

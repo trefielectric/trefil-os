@@ -380,6 +380,7 @@ function MemberDrawer({
   created: (name: string) => void;
 }) {
   const editingSelf = person?.id === snapshot.me.id;
+  const [personId] = useState(()=>person?.id ?? crypto.randomUUID());
   const [role, setRole] = useState(person?.access_role ?? "employee");
   const initial = useMemo(() => new Set(person ? effectivePermissions(person, snapshot.roles) : snapshot.roles.find((item) => item.code === "employee")?.permissions ?? []), [person, snapshot.roles]);
   const [granted, setGranted] = useState<Set<string>>(initial);
@@ -411,7 +412,6 @@ function MemberDrawer({
     event.preventDefault();
     const fields = new FormData(event.currentTarget);
     const name = String(fields.get("name") ?? "").trim();
-    const personId = person?.id ?? crypto.randomUUID();
     void perform(async (client) => {
       const password = String(fields.get("password") ?? "");
       if ((!person || password) && password.length < 6)
@@ -433,7 +433,7 @@ function MemberDrawer({
         p_title: fields.get("title"),
         p_area: fields.get("area"),
         p_role: editingSelf ? person?.access_role : role,
-        p_supervisor: null,
+        p_supervisor: person?.supervisor_id ?? null,
         p_active: editingSelf || fields.get("active") === "on",
       });
       await workforceRpc(client, "workforce_save_member_access", {
@@ -446,8 +446,12 @@ function MemberDrawer({
         const { data, error } = await client.functions.invoke<{ created: boolean }>("workforce-invite", {
           body: { action: "create", personId, password },
         });
-        if (error || data?.created !== true)
-          throw new WorkforceError("El perfil se guardó, pero no pudimos crear su acceso. Elimínalo y vuelve a crearlo.");
+        if (error || data?.created !== true) {
+          const problem=await error?.context?.json?.().catch(()=>null);
+          if(problem?.code!=="already_registered")throw new WorkforceError("El perfil se guardó. Vuelve a pulsar Crear usuario para completar el acceso.");
+          const retry=await client.functions.invoke("workforce-invite",{body:{action:"password",personId,password}});
+          if(retry.error||retry.data?.passwordUpdated!==true)throw new WorkforceError("No se pudo confirmar la contraseña. Intenta de nuevo.");
+        }
         created(name);
       } else {
         if (password) {

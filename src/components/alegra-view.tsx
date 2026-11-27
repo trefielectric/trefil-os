@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useContext, useCallback, useEffect, useState } from 'react';
+import { PublicWorkspace } from "@/lib/jornada-permissions";
 import { Archive, ChevronLeft, ChevronRight, LockKeyhole, PackageSearch, RefreshCw, Search, ShieldCheck } from 'lucide-react';
 import { getSupabaseClient, publicSupabaseConfiguration } from '@/lib/supabase/client';
 import styles from './alegra-view.module.css';
@@ -27,6 +28,7 @@ async function snapshot<T>(kind:'summary'|Kind,search='',page=1):Promise<T>{
 }
 
 export function AlegraView(){
+  const guest=useContext(PublicWorkspace);
   const configured=publicSupabaseConfiguration().configured;
   const [summary,setSummary]=useState<Summary|null>(null);
   const [kind,setKind]=useState<Kind>('invoices');
@@ -46,25 +48,25 @@ export function AlegraView(){
     catch(reason){setError(reason instanceof Error?reason.message:'No se pudo abrir el histórico de Alegra.');setScreen('blocked');}
   },[]);
 
-  useEffect(()=>{void loadSummary();const client=getSupabaseClient();if(!client)return;let timer:ReturnType<typeof setTimeout>|undefined;const {data:{subscription}}=client.auth.onAuthStateChange((_event,session)=>{if(timer)clearTimeout(timer);timer=setTimeout(()=>{if(session)void loadSummary();else{setSummary(null);setResult(null);setScreen('signin');}},0);});return()=>{subscription.unsubscribe();if(timer)clearTimeout(timer);};},[loadSummary]);
-  useEffect(()=>{if(screen!=='ready'||!summary?.ready)return;let active=true;const timer=setTimeout(()=>{setError('');void snapshot<PageResult>(kind,query,page).then(data=>{if(active)setResult(data);}).catch(reason=>{if(active)setError(reason instanceof Error?reason.message:'No se pudo consultar Alegra.');});},250);return()=>{active=false;clearTimeout(timer);};},[kind,page,query,screen,summary?.ready]);
+  useEffect(()=>{if(guest)return;void loadSummary();const client=getSupabaseClient();if(!client)return;let timer:ReturnType<typeof setTimeout>|undefined;const {data:{subscription}}=client.auth.onAuthStateChange((_event,session)=>{if(timer)clearTimeout(timer);timer=setTimeout(()=>{if(session)void loadSummary();else{setSummary(null);setResult(null);setScreen('signin');}},0);});return()=>{subscription.unsubscribe();if(timer)clearTimeout(timer);};},[loadSummary,guest]);
+  useEffect(()=>{if(guest||screen!=='ready'||!summary?.ready)return;let active=true;const timer=setTimeout(()=>{setError('');void snapshot<PageResult>(kind,query,page).then(data=>{if(active)setResult(data);}).catch(reason=>{if(active)setError(reason instanceof Error?reason.message:'No se pudo consultar Alegra.');});},250);return()=>{active=false;clearTimeout(timer);};},[guest,kind,page,query,screen,summary?.ready]);
   const pages=Math.max(1,Math.ceil((result?.total??0)/50));
 
-  if(!configured)return <AccessState title="Conexión institucional pendiente" text="Supabase debe estar configurado para proteger la información importada de Alegra."/>;
-  if(screen==='loading')return <div className={styles.loading}><RefreshCw className={styles.spin} size={18}/>Cargando el histórico de Alegra…</div>;
-  if(screen==='signin')return <AccessState title="Inicia sesión para consultar Alegra" text="Este histórico contiene datos comerciales y solo se muestra según las funciones y permisos asignados en Equipo." action={<a className="button button-primary" href="/acceso/"><LockKeyhole size={16}/>Iniciar sesión</a>}/>;
-  if(screen==='blocked')return <AccessState title="Acceso restringido" text={error||'Tu rol no tiene permiso para consultar Alegra.'} action={<a className="button button-secondary" href="/equipo/"><ShieldCheck size={16}/>Revisar funciones y permisos</a>}/>;
-  if(!summary?.ready)return <AccessState title="Importación preparada" text="La estructura segura está lista, pero todavía no existe un lote reconciliado de Alegra."/>;
-  const batch=summary.batch!;
+  if(!guest&&!configured)return <AccessState title="Conexión institucional pendiente" text="Supabase debe estar configurado para proteger la información importada de Alegra."/>;
+  if(!guest&&screen==='loading')return <div className={styles.loading}><RefreshCw className={styles.spin} size={18}/>Cargando el histórico de Alegra…</div>;
+  if(!guest&&screen==='signin')return <AccessState title="Inicia sesión para consultar Alegra" text="Este histórico contiene datos comerciales y solo se muestra según las funciones y permisos asignados en Equipo." action={<a className="button button-primary" href="/acceso/"><LockKeyhole size={16}/>Iniciar sesión</a>}/>;
+  if(!guest&&screen==='blocked')return <AccessState title="Acceso restringido" text={error||'Tu rol no tiene permiso para consultar Alegra.'} action={<a className="button button-secondary" href="/equipo/"><ShieldCheck size={16}/>Revisar funciones y permisos</a>}/>;
+  if(!guest&&!summary?.ready)return <AccessState title="Importación preparada" text="La estructura segura está lista, pero todavía no existe un lote reconciliado de Alegra."/>;
+  const batch=guest?{contacts:0,products:0,invoices:0,invoice_date_min:"",invoice_date_max:""}:summary!.batch!;
 
   return <div className={styles.shell}>
-    <div className={styles.notice}><Archive size={20}/><div><strong>Histórico importado · solo lectura</strong><p>Estos clientes, productos y facturas conservan lo registrado en Alegra. No crean movimientos en Caja, asientos contables ni cambios de inventario.</p></div></div>
+    <div className={styles.notice}><Archive size={20}/><div><strong>{guest?"Histórico de Alegra · vista pública":"Histórico importado · solo lectura"}</strong><p>Estos clientes, productos y facturas conservan lo registrado en Alegra. No crean movimientos en Caja, asientos contables ni cambios de inventario.</p></div></div>
     <section className={styles.stats} aria-label="Resumen de la importación">
       <Stat label="Clientes y contactos" value={batch.contacts}/><Stat label="Productos" value={batch.products}/><Stat label="Facturas" value={batch.invoices} detail={`${formatDate(batch.invoice_date_min)} – ${formatDate(batch.invoice_date_max)}`}/>
     </section>
     <div className={styles.toolbar}><nav className={styles.tabs} aria-label="Datos importados">{(Object.keys(labels) as Kind[]).map(id=><button key={id} aria-current={kind===id?'page':undefined} onClick={()=>{setKind(id);setPage(1);setQuery('');}}>{labels[id]}</button>)}</nav><label className={styles.search}><Search size={16}/><input value={query} onChange={event=>{setQuery(event.target.value);setPage(1);}} placeholder={`Buscar en ${labels[kind].toLowerCase()}…`} aria-label={`Buscar en ${labels[kind]}`}/></label></div>
     {error&&<p className={styles.error} role="alert">{error}</p>}
-    <section className={styles.panel}><header className={styles.panelHeader}><h2>{labels[kind]}</h2><span>{result?.total??0} registros</span></header>{result?<DataTable kind={kind} rows={result.items}/>:<div className={styles.loading}><RefreshCw className={styles.spin} size={17}/>Consultando…</div>}<footer className={styles.pager}><span>Página {page} de {pages}</span><button aria-label="Página anterior" disabled={page<=1} onClick={()=>setPage(value=>value-1)}><ChevronLeft size={16}/></button><button aria-label="Página siguiente" disabled={page>=pages} onClick={()=>setPage(value=>value+1)}><ChevronRight size={16}/></button></footer></section>
+    <section className={styles.panel}><header className={styles.panelHeader}><h2>{labels[kind]}</h2><span>{result?.total??0} registros</span></header>{guest||result?<DataTable kind={kind} rows={guest?[]:result!.items}/>:<div className={styles.loading}><RefreshCw className={styles.spin} size={17}/>Consultando…</div>}<footer className={styles.pager}><span>Página {page} de {pages}</span><button aria-label="Página anterior" disabled={page<=1} onClick={()=>setPage(value=>value-1)}><ChevronLeft size={16}/></button><button aria-label="Página siguiente" disabled={page>=pages} onClick={()=>setPage(value=>value+1)}><ChevronRight size={16}/></button></footer></section>
   </div>;
 }
 

@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useContext, useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { PublicWorkspace } from "@/lib/jornada-permissions";
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowLeft, Code2, Copy, KeyRound, Link2, LockKeyhole, RefreshCw, ShieldCheck, Unplug, UsersRound, Webhook } from "lucide-react";
@@ -22,6 +23,7 @@ function clientConfiguration(client: ClientTab, endpoint: string) {
 }
 
 export function DeveloperApp() {
+  const guest=useContext(PublicWorkspace);
   const configured = publicSupabaseConfiguration().configured;
   const [snapshot, setSnapshot] = useState<DeveloperSnapshot | null>(null);
   const [screen, setScreen] = useState<"loading" | "signin" | "blocked" | "ready">("loading");
@@ -48,6 +50,7 @@ export function DeveloperApp() {
   }, []);
 
   useEffect(() => {
+    if(guest)return;
     const client = getSupabaseClient();
     if (!client) { setScreen("signin"); return; }
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -56,7 +59,7 @@ export function DeveloperApp() {
       timer = setTimeout(() => session ? void load() : (setSnapshot(null), setScreen("signin")), 0);
     });
     return () => { subscription.unsubscribe(); if (timer) clearTimeout(timer); };
-  }, [load]);
+  }, [load,guest]);
 
   const endpoint = snapshot?.endpoint ?? "https://kifmqoolaerepvlzrqnk.supabase.co/functions/v1/trefil-mcp";
   const configuration = useMemo(() => clientConfiguration(clientTab, endpoint), [clientTab, endpoint]);
@@ -78,10 +81,10 @@ export function DeveloperApp() {
       .finally(() => setBusy(false));
   }
 
-  if (screen === "loading") return <DeveloperFrame><div className="developer-loading"><RefreshCw className="spin" />Preparando conexiones seguras…</div></DeveloperFrame>;
-  if (!configured) return <DeveloperFrame><AccessState title="Supabase no está configurado" text="El centro MCP necesita la conexión institucional para proteger identidades y permisos." /></DeveloperFrame>;
-  if (screen === "signin") return <DeveloperFrame><section className="developer-access"><LockKeyhole /><h1>Acceso administrativo</h1><p>Inicia sesión para administrar la conexión con asistentes de IA.</p><form onSubmit={submitLogin}><Field label="Correo o número de cédula"><input name="document" autoComplete="username" required /></Field><Field label="Contraseña"><input name="password" type="password" autoComplete="current-password" required /></Field><button className="button button-primary" disabled={busy}><KeyRound size={16} />Ingresar</button></form><Link href="/equipo/">Ir a Equipo</Link>{error && <p className="developer-feedback error">{error}</p>}</section></DeveloperFrame>;
-  if (screen === "blocked") return <DeveloperFrame><AccessState title="Acceso restringido" text={error || "Tu rol debe incluir el permiso para administrar integraciones."} action={<Link className="button button-primary" href="/equipo/"><ShieldCheck size={16} />Ir a Equipo</Link>} /></DeveloperFrame>;
+  if (!guest && screen === "loading") return <DeveloperFrame><div className="developer-loading"><RefreshCw className="spin" />Preparando conexiones seguras…</div></DeveloperFrame>;
+  if (!guest && !configured) return <DeveloperFrame><AccessState title="Supabase no está configurado" text="El centro MCP necesita la conexión institucional para proteger identidades y permisos." /></DeveloperFrame>;
+  if (!guest && screen === "signin") return <DeveloperFrame><section className="developer-access"><LockKeyhole /><h1>Acceso administrativo</h1><p>Inicia sesión para administrar la conexión con asistentes de IA.</p><form onSubmit={submitLogin}><Field label="Correo o número de cédula"><input name="document" autoComplete="username" required /></Field><Field label="Contraseña"><input name="password" type="password" autoComplete="current-password" required /></Field><button className="button button-primary" disabled={busy}><KeyRound size={16} />Ingresar</button></form><Link href="/equipo/">Ir a Equipo</Link>{error && <p className="developer-feedback error">{error}</p>}</section></DeveloperFrame>;
+  if (!guest && screen === "blocked") return <DeveloperFrame><AccessState title="Acceso restringido" text={error || "Tu rol debe incluir el permiso para administrar integraciones."} action={<Link className="button button-primary" href="/equipo/"><ShieldCheck size={16} />Ir a Equipo</Link>} /></DeveloperFrame>;
 
   return <DeveloperFrame>
     <main className="developer-main" aria-busy={busy}>

@@ -1,6 +1,6 @@
 'use client';
 import { getDebtCalendar, getRecurringBillBalance, getDebtModuleState } from '@/lib/debts/engine';
-import { JornadaPermissions } from "@/lib/jornada-permissions";
+import { JornadaPermissions, PublicWorkspace } from "@/lib/jornada-permissions";
 import { useContext, useCallback, useEffect, useRef, useState } from 'react';
 import { Package, LayoutDashboard, ArrowRightLeft, Wallet, Landmark, CheckCheck, ShieldCheck, Bell, Activity, Settings, Search, ChevronDown, ChevronRight, Plus, Download, ArrowUpRight, ArrowDownLeft, ArrowRight, Building2, Menu, X, HardDrive, Check, LockKeyhole, Users, ShoppingCart, Code2, CalendarClock, FileBarChart, Archive } from 'lucide-react';
 import { createEmptyState, formatCOP, getAccountBalance, getDebtBalance, deriveAlerts, toCents, fromCents, add } from '@/lib/finance';
@@ -72,7 +72,8 @@ const viewPermission:Record<View,string> = {
 };
 export function FinanceApp() {
   const capabilities=useContext(JornadaPermissions);
-  const allowed=(id:View)=>!viewPermission[id]||capabilities.includes(viewPermission[id]);
+  const guest=useContext(PublicWorkspace);
+  const allowed=(id:View)=>guest||!viewPermission[id]||capabilities.includes(viewPermission[id]);
   const [state,setState]=useState<State|null>(null);
   const current=useRef<State|null>(null);
   const [actorId,setActorId]=useState('');
@@ -106,6 +107,10 @@ export function FinanceApp() {
       current.current=snapshot;setState(snapshot);
       if(resetActor)setActorId(snapshot.members.find(member=>member.role==='owner'&&member.active)?.id??snapshot.members.find(member=>member.active)?.id??'');
     };
+    if(guest){
+      const empty=createEmptyState();empty.members[0].name='Visitante de prueba';
+      show(empty,true);return;
+    }
     const stopWriting=(message:string)=>{hasWriterLock.current=false;canPersist.current=false;readOnlyReason.current=message;setError(message);};
     const readSnapshot=(initialize=false):State=>{
       let snapshot=createEmptyState();canPersist.current=true;
@@ -156,10 +161,17 @@ export function FinanceApp() {
     };
     window.addEventListener('keydown',onKey);window.addEventListener('storage',onStorage);
     return()=>{disposed=true;hasWriterLock.current=false;lease.release();window.removeEventListener('keydown',onKey);window.removeEventListener('storage',onStorage);if(timer.current)clearTimeout(timer.current);};
-  },[notify]);
+  },[notify,guest]);
   const mutate:Mutation=(operation,message)=>{
     setActionError('');
     const fail=(message:string)=>{setActionError(message);notify(message);return false;};
+    if(guest && current.current){
+      try {
+        const next=operation(current.current);const checked=inspectDemoState(next);
+        if(!checked.ok)return fail(checked.error);
+        current.current=next;setState(next);notify(message);return true;
+      }catch(reason){return fail(reason instanceof Error?reason.message:'No se pudo completar la prueba.');}
+    }
     const writePermissions:Partial<Record<View,string[]>>={
       accounts:['cash_register','cash_close'],agenda:['agenda_manage'],inventory:['inventory_register','inventory_approve'],
       sales:['sales_register','sales_approve'],debts:['debts_register','debts_approve'],approvals:['finance_approve'],
@@ -205,14 +217,14 @@ export function FinanceApp() {
       <nav aria-label="Navegación principal">{navItems.slice(0,11).filter(item=>allowed(item.id)).map(({id,label,icon:Icon})=><button key={id} onClick={()=>go(id)} className={'nav-item '+(view===id?'active':'')} aria-current={view===id?'page':undefined}><Icon size={18}/><span>{label}</span>{Boolean(counts[id])&&<b>{counts[id]}</b>}</button>)}</nav>
       <div className="nav-label control-label">CONTROL Y GESTIÓN</div><nav aria-label="Control y gestión">{navItems.slice(11).filter(item=>allowed(item.id)).map(({id,label,icon:Icon})=><button key={id} onClick={()=>go(id)} className={'nav-item '+(view===id?'active':'')} aria-current={view===id?'page':undefined}><Icon size={18}/><span>{label}</span>{Boolean(counts[id])&&<b className={id==='alerts'?'alert-count':''}>{counts[id]}</b>}</button>)}<a className="nav-item" href="/desarrolladores/"><Code2 size={18}/><span>Desarrolladores</span></a></nav>
       <a className="nav-item" href="/control-administrativo/"><LockKeyhole size={18}/><span>Control Administrativo</span></a>
-      <div className="sidebar-bottom"><div className="phase-card"><span className="phase-icon">↗</span><strong>Hecho para tu operación.</strong><p>Una base financiera.<br/>Todo un ecosistema por delante.</p><button onClick={()=>go('settings')}>Ver hoja de ruta <ArrowUpRight size={14}/></button></div><button className="backup-sidebar" onClick={()=>go('settings')}><HardDrive size={16}/><span>Respaldo sin verificar</span><i/></button><div className="sidebar-divider"/><button className="profile-button" onClick={()=>setProfileOpen(!profileOpen)} aria-expanded={profileOpen}><span className="avatar">TE</span><span><strong>{roleLabels[actor.role]}</strong><small>Perfil local · Sin autenticar</small></span><ChevronDown size={14}/></button></div>
-      {profileOpen&&<div className="profile-menu"><div className="eyebrow">ESPACIO LOCAL</div><p className="local-profile-note">Este perfil identifica cambios en este navegador. Equipo, Producción y Control Administrativo utilizan tu cuenta institucional.</p><button onClick={()=>{go('settings');setProfileOpen(false);}}><span>Ver configuración</span><Settings size={15}/></button><a className="text-button" href="/acceso/"><LockKeyhole size={15}/> Acceso institucional</a></div>}
+      <div className="sidebar-bottom"><div className="phase-card"><span className="phase-icon">↗</span><strong>Hecho para tu operación.</strong><p>Una base financiera.<br/>Todo un ecosistema por delante.</p><button onClick={()=>go('settings')}>Ver hoja de ruta <ArrowUpRight size={14}/></button></div><button className="backup-sidebar" onClick={()=>go('settings')}><HardDrive size={16}/><span>Respaldo sin verificar</span><i/></button><div className="sidebar-divider"/><button className="profile-button" onClick={()=>setProfileOpen(!profileOpen)} aria-expanded={profileOpen}><span className="avatar">TE</span><span><strong>{guest?"Visitante":roleLabels[actor.role]}</strong><small>{guest?"Perfil público":"Perfil local"}</small></span><ChevronDown size={14}/></button></div>
+      {profileOpen&&<div className="profile-menu"><a className="text-button" href="/equipo/">Mi cuenta y contraseña</a><a className="text-button" href="/usuario/">Mi jornada</a><div className="eyebrow">ESPACIO LOCAL</div><p className="local-profile-note">Este perfil identifica cambios en este navegador. Equipo, Producción y Control Administrativo utilizan tu cuenta institucional.</p><button onClick={()=>{go('settings');setProfileOpen(false);}}><span>Ver configuración</span><Settings size={15}/></button><a className="text-button" href="/acceso/"><LockKeyhole size={15}/> Acceso institucional</a></div>}
 
     </aside>
     <div className="main-shell">
       <header className="topbar"><div className="breadcrumbs"><button className="icon-button mobile-menu" aria-label="Abrir menú" onClick={()=>setSidebarOpen(true)}><Menu size={21}/></button><MobileBrand/><span className="workspace-breadcrumb">Espacio de trabajo</span><ChevronRight size={13}/><strong>{navItems.find(i=>i.id===view)?.label}</strong></div><div className="topbar-actions"><div className="global-search"><Search size={16}/><input ref={searchRef} placeholder="Buscar movimientos…" aria-label="Buscar movimientos" value={search} onChange={e=>{setSearch(e.target.value);setView('transactions');}}/><kbd>⌘ K</kbd></div><span className="topbar-separator"/><button className="notification-button icon-button" hidden={!allowed('alerts')} aria-label={'Ver '+(allowed('alerts')?openAlerts.length:0)+' alertas'} onClick={()=>go('alerts')}><Bell size={20}/>{allowed('alerts')&&openAlerts.length>0&&<i/>}</button><span className="avatar avatar-small">TE</span></div></header>
       <main id="main-content">
-        <div className="demo-bar"><span><i/> ESPACIO LOCAL <b>Guardado en este navegador · Conexión institucional pendiente</b></span><button onClick={()=>go('settings')}>Estado de implementación <ArrowRight size={13}/></button></div>
+        {guest?<div className="demo-bar"><span><i/> PERFIL PÚBLICO <b>Los cambios de prueba se descartan al salir.</b></span><button onClick={()=>go('team')}>Usuarios y contraseñas <Users size={14}/></button></div>:<div className="demo-bar"><span><i/> ESPACIO LOCAL <b>Guardado en este navegador · Conexión institucional pendiente</b></span><button onClick={()=>go('settings')}>Estado de implementación <ArrowRight size={13}/></button></div>}
         {error&&<div className="error-banner" role="alert">{error}<button aria-label="Cerrar aviso de almacenamiento" onClick={()=>setError('')}><X size={16}/></button></div>}
         <section className="page-heading"><div><div className="eyebrow">{view==='team'?'ADMINISTRACIÓN':view==='inventory'||view==='sales'||view==='alegra'?'OPERACIÓN':'FINANZAS'} <span>/</span> {view==='overview'?'VISTA GENERAL':navItems.find(i=>i.id===view)?.label.toUpperCase()}</div><h1>{titles[view].title.replace(/\.$/,'')}<span className="heading-dot">.</span></h1><p>{titles[view].subtitle}</p></div><div className="heading-buttons">{!['inventory','sales','debts','agenda','reports','alegra','team'].includes(view)&&<button className="button button-secondary" onClick={exportReport}><Download size={16}/><span>Exportar reporte</span></button>}{canWrite(actor)&&!['accounts','inventory','sales','debts','agenda','reports','alegra','team'].includes(view)&&<button className="button button-primary" onClick={()=>openCash(hasAccounts?'operations':'accounts')}><Plus size={18}/>{hasAccounts?'Ir a Caja':'Crear primera cuenta'}</button>}</div></section>
         {view!=='team'&&<div className="context-bar"><div className="context-date"><CalendarIcon/><span>Al <strong>{new Intl.DateTimeFormat('es-CO',{dateStyle:'long',timeZone:'America/Bogota'}).format(new Date(DEMO_DATE+'T12:00:00Z'))}</strong></span><span className="context-dot">·</span><span>COP <span className="muted">/</span> Bogotá</span></div><div className="context-filters"><label><Building2 size={14}/><select aria-label="Filtrar por sede" value={location} onChange={e=>setLocation(e.target.value)}><option value="all">Todas las sedes</option>{state.locations.map(l=><option key={l.id} value={l.id}>{l.name}</option>)}</select></label>{['overview','transactions'].includes(view)&&<label><select aria-label="Período del reporte" value={period} onChange={e=>setPeriod(e.target.value)}>{reportPeriods.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select></label>}</div></div>}
